@@ -24,6 +24,17 @@ npm install
 npm run build
 ```
 
+## Korpus paralel Alkitab
+
+`public/data/bible-parallel.json` berisi ±31.000 ayat Bibel Simalungun 2007 yang disejajarkan per ayat dengan Alkitab Terjemahan Baru. `public/data/smg-lexicon.json` berisi ±21.000 kata Simalungun beserta arti yang dipelajari secara statistik (IBM Model 1, dua arah) dari kedua Alkitab. Keduanya dibuat dari PDF di `public/assets/aistudio/` dan dipakai oleh panel *Korpus Paralel* serta penerjemah offline.
+
+Untuk membuat ulang (misalnya setelah mengubah `scripts/parse-bible.mjs`):
+
+```
+npm run build:corpus
+npm run build
+```
+
 ## Jalankan di komputer (lengkap dengan fitur AI)
 
 Butuh Node.js 20.19+ atau 22+.

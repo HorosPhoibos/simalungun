@@ -50,6 +50,17 @@ import {
   EXTERNAL_REFERENCES,
   MargaUtama,
 } from './data/partuturanAndHymns';
+import {
+  BibleCorpus,
+  findVerseByReference,
+  getLoadedBibleCorpus,
+  loadBibleCorpus,
+  lookupIndonesianWord,
+  lookupSimalungunWord,
+  searchVerses,
+  verseReference,
+} from './bibleCorpus';
+import BibleCorpusExplorer from './components/BibleCorpusExplorer';
 
 // On static hosts like GitHub Pages there is no /api server, so a request returns an HTML 404 page.
 // Turn that into a readable message instead of a JSON parse error.
@@ -419,6 +430,44 @@ function translateOfflineInstant(
   allLexicon: DictionaryEntry[]
 ): TextTranslationResponse {
   const cleanInput = rawText.trim().toLowerCase();
+  const corpus = getLoadedBibleCorpus();
+
+  // A Bible reference ("Yohanes 3:16", "1 Musa 1:1-3") returns the verbatim parallel verses.
+  const refHits = corpus ? findVerseByReference(corpus, rawText) : null;
+  if (corpus && refHits) {
+    const reference = verseReference(corpus, refHits[0]) + (refHits.length > 1 ? ` – ${refHits[refHits.length - 1][2]}` : '');
+    const smgText = refHits.map((v) => v[3]).join(' ');
+    const idnText = refHits.map((v) => v[4]).join(' ');
+    const isIdnTarget = direction !== 'id-to-smg';
+    return {
+      detectedSourceLanguage: 'Referensi Ayat',
+      targetLanguage: isIdnTarget ? 'Indonesia (Alkitab TB)' : 'Simalungun (Bibel 2007)',
+      translatedText: isIdnTarget ? idnText : smgText,
+      naturalCasualVersion: smgText,
+      politeFormalVersion: smgText,
+      phoneticGuide: smgText.toLowerCase().replace(/[^a-zà-ÿ\s-]/g, '').replace(/\s+/g, ' · '),
+      dialectComparison: {
+        raya: smgText,
+        silimakuta: smgText,
+        topiPasir: smgText,
+        jaheJahe: smgText,
+        linguisticNote: `Kutipan verbatim dari korpus paralel Bibel Simalungun 2007 ↔ Alkitab TB — ${reference}.`,
+      },
+      wordBreakdown: smgText
+        .split(/\s+/)
+        .map((w) => lookupSimalungunWord(corpus, w))
+        .filter((r): r is NonNullable<typeof r> => Boolean(r && r.candidates.length && r.confidence !== 'rendah'))
+        .filter((r, i, arr) => arr.findIndex((x) => x.matchedWord === r.matchedWord) === i)
+        .slice(0, 12)
+        .map((r) => ({
+          word: r.matchedWord,
+          meaning: r.candidates.slice(0, 2).map((c) => c.indonesian).join(' / '),
+          partOfSpeech: 'korpus',
+          morphologyNote: `Statistik korpus Alkitab (${r.frequency}× , keyakinan ${r.confidence})`,
+        })),
+      relatedBibleParallel: { reference, simalungunVerse: smgText, indonesianVerse: idnText },
+    };
+  }
 
   // Check if user typed Genesis 1:1 / 1 Musa 1:1 / Kejadian 1:1
   if (
@@ -624,6 +673,7 @@ function translateOfflineInstant(
   tokens.forEach((t) => {
     const w = t.replace(/[^a-zA-Z]/g, '').toLowerCase();
     if (smgToIndoMap[w]) smgCount++;
+    else if (corpus && corpus.bySmgWord.has(w) && !corpus.byIdnWord.has(w)) smgCount++;
   });
 
   const resolvedDirection =
@@ -645,6 +695,17 @@ function translateOfflineInstant(
         });
         return mapped + punct;
       }
+      // Fall back to the word lexicon learned from the parallel Bible.
+      const fromCorpus = corpus ? lookupIndonesianWord(corpus, clean, 1)[0] : undefined;
+      if (fromCorpus) {
+        breakdown.push({
+          word: fromCorpus.simalungun,
+          meaning: clean,
+          partOfSpeech: 'korpus',
+          morphologyNote: `Korpus paralel Alkitab (${fromCorpus.frequency}× muncul)`,
+        });
+        return fromCorpus.simalungun + punct;
+      }
       return tok;
     } else {
       const mapped = smgToIndoMap[clean];
@@ -657,11 +718,24 @@ function translateOfflineInstant(
         });
         return mapped + punct;
       }
+      // Emphasis particles have no Indonesian equivalent ("Ulang ma mabiar ho" = "jangan takut").
+      if (['ma', 'do', 'pe'].includes(clean)) return '';
+      const fromCorpus = corpus ? lookupSimalungunWord(corpus, clean) : null;
+      if (fromCorpus && fromCorpus.candidates.length > 0) {
+        const best = fromCorpus.candidates[0].indonesian;
+        breakdown.push({
+          word: clean,
+          meaning: fromCorpus.candidates.slice(0, 3).map((c) => c.indonesian).join(' / '),
+          partOfSpeech: 'korpus',
+          morphologyNote: `Korpus paralel Alkitab (${fromCorpus.frequency}×, keyakinan ${fromCorpus.confidence})`,
+        });
+        return best + punct;
+      }
       return tok;
     }
   });
 
-  let finalSentence = translatedTokens.join(' ');
+  let finalSentence = translatedTokens.filter(Boolean).join(' ');
   if (
     resolvedDirection === 'id-to-smg' &&
     style === 'santai' &&
@@ -699,13 +773,36 @@ function translateOfflineInstant(
               morphologyNote: 'Hasil kamus instan lokal.',
             },
           ],
-    relatedBibleParallel: {
+    relatedBibleParallel: findRelatedVerse(rawText, corpus) ?? {
       reference: 'Amsal 4:23 (Podah 4:23 — Verbatim PDF Bibel Simalungun)',
       simalungunVerse:
         'Tang siporlunan, jaga ma uhurmu, ai hunjai do luar hagoluhan.',
       indonesianVerse:
         'Jagalah hatimu dengan segala kewaspadaan, karena dari situlah terpancar kehidupan.',
     },
+  };
+}
+
+// Picks a verse from the parallel corpus that uses the rarest (most specific) input word.
+function findRelatedVerse(rawText: string, corpus: BibleCorpus | null) {
+  if (!corpus) return null;
+  const words = rawText
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => w.replace(/[^a-zà-ÿ-]/g, ''))
+    .filter((w) => w.length >= 3);
+  let best: { word: string; freq: number } | null = null;
+  for (const w of words) {
+    const freq = corpus.bySmgWord.get(w)?.[1] ?? (corpus.byIdnWord.has(w) ? 50 : 0);
+    if (freq > 0 && (!best || freq < best.freq)) best = { word: w, freq };
+  }
+  if (!best) return null;
+  const verse = searchVerses(corpus, best.word, 1)[0];
+  if (!verse) return null;
+  return {
+    reference: `${verseReference(corpus, verse)} — korpus paralel`,
+    simalungunVerse: verse[3],
+    indonesianVerse: verse[4],
   };
 }
 
@@ -726,6 +823,13 @@ export default function App() {
       return [];
     }
   });
+
+  // Parallel Bible corpus powers the offline translator; load it in the background.
+  useEffect(() => {
+    loadBibleCorpus().catch(() => {
+      // offline translator keeps working with the built-in lexicon
+    });
+  }, []);
 
   // Verbatim PDF Search State
   const [pdfSearchQuery, setPdfSearchQuery] = useState('');
@@ -1127,6 +1231,16 @@ export default function App() {
       // Client-side static fallback for GitHub Pages (searches corpus, Bible verses, and dictionary entries)
       const qLower = q.toLowerCase();
       const localHits: PdfSearchHit[] = [];
+      const corpus = await loadBibleCorpus().catch(() => null);
+      if (corpus) {
+        for (const v of searchVerses(corpus, q, 8)) {
+          localHits.push({
+            docId: 'alkitab-smg',
+            docTitle: `Bibel Simalungun ↔ Alkitab TB — ${verseReference(corpus, v)}`,
+            snippet: `[Simalungun]: "${v[3]}" | [Terjemahan Baru]: "${v[4]}"`,
+          });
+        }
+      }
       for (const item of allLexicon) {
         if (
           item.simalungun.toLowerCase().includes(qLower) ||
@@ -1145,13 +1259,13 @@ export default function App() {
         for (const bib of item.biblicalReferences) {
           if (
             bib.reference.toLowerCase().includes(qLower) ||
-            bib.simalungunText.toLowerCase().includes(qLower) ||
-            bib.indonesianText.toLowerCase().includes(qLower)
+            bib.simalungunVerse.toLowerCase().includes(qLower) ||
+            bib.indonesianVerse.toLowerCase().includes(qLower)
           ) {
             localHits.push({
               docId: 'alkitab-smg',
               docTitle: `Bibel Bahasa Simalungun — ${bib.reference}`,
-              snippet: `[Simalungun]: "${bib.simalungunText}" | [Terjemahan Baru]: "${bib.indonesianText}"`,
+              snippet: `[Simalungun]: "${bib.simalungunVerse}" | [Terjemahan Baru]: "${bib.indonesianVerse}"`,
             });
           }
         }
@@ -2814,6 +2928,8 @@ export default function App() {
                 </div>
               )}
             </section>
+
+            <BibleCorpusExplorer />
 
             {/* Verbatim 4 PDF Direct Search Bar */}
             <section className="bg-white dark:bg-[#181615] rounded-2xl border border-stone-200/90 dark:border-stone-800 p-5 sm:p-8 space-y-4">
