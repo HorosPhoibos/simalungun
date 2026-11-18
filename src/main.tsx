@@ -12,7 +12,7 @@ class ErrorBoundary extends Component<{children: ReactNode}, {error: Error | nul
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('Pustaha Simalungun crashed:', error, info.componentStack);
+    console.error('Simalungunku crashed:', error, info.componentStack);
   }
 
   render() {

@@ -1,7 +1,7 @@
 {
-  "name": "Pustaha Simalungun",
-  "short_name": "Pustaha",
-  "description": "Kamus Simalungun–Indonesia, korpus paralel Alkitab, dan Doding Haleluya.",
+  "name": "Simalungunku",
+  "short_name": "Simalungunku",
+  "description": "Kamus Simalungun–Indonesia, korpus paralel Alkitab, dan buku nyanyian (Doding Haleluya, KJ, PKJ, NKB).",
   "lang": "id",
   "start_url": "./",
   "scope": "./",

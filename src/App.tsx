@@ -18,6 +18,7 @@ import {
   X,
   Users,
   Music,
+  PlayCircle,
   Zap,
   Sparkles,
   UserPlus,
@@ -68,6 +69,21 @@ import SongbookReader from './components/SongbookReader';
 const STATIC_HOST_AI_MESSAGE =
   'Fitur AI ini membutuhkan server (npm run dev). Di versi statis (GitHub Pages) gunakan mode Instan/Offline.';
 
+// Verses shown when the translator opens and as quick examples (resolved from the parallel corpus).
+const DEFAULT_VERSE = 'Mazmur 23:1';
+const FAITH_VERSES: { ref: string; label: string }[] = [
+  { ref: 'Mazmur 23:1', label: 'TUHAN adalah gembalaku' },
+  { ref: 'Yohanes 3:16', label: 'Begitu besar kasih Allah' },
+  { ref: 'Yesaya 41:10', label: 'Janganlah takut, sebab Aku menyertai engkau' },
+  { ref: 'Filipi 4:13', label: 'Segala perkara dapat kutanggung' },
+  { ref: 'Amsal 3:5', label: 'Percayalah kepada TUHAN dengan segenap hatimu' },
+  { ref: 'Matius 11:28', label: 'Marilah kepada-Ku, semua yang letih lesu' },
+  { ref: 'Roma 8:28', label: 'Allah turut bekerja dalam segala sesuatu' },
+  { ref: 'Yeremia 29:11', label: 'Rancangan damai sejahtera' },
+  { ref: 'Yosua 1:9', label: 'Kuatkan dan teguhkanlah hatimu' },
+  { ref: '1 Petrus 5:7', label: 'Serahkanlah segala kekuatiranmu kepada-Nya' },
+];
+
 async function readApiJson(response: Response): Promise<any> {
   const contentType = response.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
@@ -81,7 +97,8 @@ type DashboardMode =
   | 'partuturan-adat'
   | 'voice-translate'
   | 'camera-ocr'
-  | 'doding-video';
+  | 'doding-video'
+  | 'video';
 
 interface TextTranslationResponse {
   detectedSourceLanguage: string;
@@ -913,7 +930,22 @@ function findRelatedVerse(rawText: string, corpus: BibleCorpus | null) {
 
 export default function App() {
   const [darkMode, setDarkMode] = useState(false);
-  const [activeMode, setActiveMode] = useState<DashboardMode>('text-lexicon');
+  // "?tab=lagu" opens a tab directly (used to come back to the songbook after logging in).
+  const [activeMode, setActiveMode] = useState<DashboardMode>(() => {
+    const tabs: Record<string, DashboardMode> = {
+      kamus: 'text-lexicon',
+      partuturan: 'partuturan-adat',
+      lagu: 'doding-video',
+      video: 'video',
+      suara: 'voice-translate',
+      kamera: 'camera-ocr',
+    };
+    try {
+      return tabs[new URLSearchParams(window.location.search).get('tab') ?? ''] ?? 'text-lexicon';
+    } catch {
+      return 'text-lexicon';
+    }
+  });
 
   // --- PERSISTENT LOCAL CACHE STATE ---
   const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -967,10 +999,8 @@ export default function App() {
   const [showAddWordModal, setShowAddWordModal] = useState(false);
 
   const [engineMode] = useState<'offline-instant' | 'ai-natural'>('offline-instant');
-  const [speechStyle, setSpeechStyle] = useState<'santai' | 'sopan' | 'alkitab'>('santai');
-  const [inputText, setInputText] = useState(
-    'Jangan ngambek dong sayang, aku kangen banget sama kamu'
-  );
+  const [speechStyle, setSpeechStyle] = useState<'santai' | 'sopan' | 'alkitab'>('alkitab');
+  const [inputText, setInputText] = useState(DEFAULT_VERSE);
   const [translateDirection, setTranslateDirection] = useState<'auto' | 'id-to-smg' | 'smg-to-id'>(
     'id-to-smg'
   );
@@ -1177,13 +1207,10 @@ export default function App() {
 
   useEffect(() => {
     loadSampleDocumentIntoVision(SAMPLE_CAMERA_DOCUMENTS[0]);
-    const initialRes = translateOfflineInstant(
-      'Jangan ngambek dong sayang, aku kangen banget sama kamu',
-      'id-to-smg',
-      'santai',
-      allLexicon
-    );
-    setTextTranslationResult(initialRes);
+    // The opening verse needs the parallel Bible corpus, so show it once that has loaded.
+    loadBibleCorpus()
+      .catch(() => null)
+      .then(() => setTextTranslationResult(translateOfflineInstant(DEFAULT_VERSE, 'id-to-smg', 'alkitab', allLexicon)));
   }, []);
 
   const handleCopy = (text: string, id: string) => {
@@ -2533,7 +2560,7 @@ export default function App() {
             }}
             className="text-lg sm:text-xl font-serif font-bold tracking-tight text-stone-900 dark:text-stone-100 whitespace-nowrap min-w-0 truncate"
           >
-            Pustaha Simalungun
+            Simalungunku
           </a>
 
           {/* Zone 2: Clean Single-Line Text Navigation Links */}
@@ -2542,7 +2569,8 @@ export default function App() {
               [
                 { id: 'text-lexicon', label: 'Kamus & Penerjemah' },
                 { id: 'partuturan-adat', label: 'Kalkulator Partuturan' },
-                { id: 'doding-video', label: 'Lagu & Doding' },
+                { id: 'doding-video', label: 'Buku Nyanyian' },
+                { id: 'video', label: 'Video' },
                 { id: 'voice-translate', label: 'Suara & Lafal' },
                 { id: 'camera-ocr', label: 'Kamera Foto' },
               ] as const
@@ -2595,12 +2623,13 @@ export default function App() {
       </header>
 
       {/* Fixed Bottom Navigation Bar on Mobile Phones (Ergonomic Thumb Zone, >= 44px Hitboxes) */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#181615]/95 backdrop-blur-md border-t border-stone-200 dark:border-stone-800 px-2 h-16 grid grid-cols-5 items-center shadow-lg">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#181615]/95 backdrop-blur-md border-t border-stone-200 dark:border-stone-800 px-1 h-16 grid grid-cols-6 items-center shadow-lg">
         {(
           [
             { id: 'text-lexicon', label: 'Kamus', icon: BookOpen },
             { id: 'partuturan-adat', label: 'Partuturan', icon: Users },
             { id: 'doding-video', label: 'Lagu', icon: Music },
+            { id: 'video', label: 'Video', icon: PlayCircle },
             { id: 'voice-translate', label: 'Suara', icon: Mic },
             { id: 'camera-ocr', label: 'Kamera', icon: Camera },
           ] as const
@@ -2749,7 +2778,7 @@ export default function App() {
                           );
                         }
                       }}
-                      placeholder="Ketik kalimat sehari-hari, sapaan ke mertua, atau ketik '1 Musa 1:1'..."
+                      placeholder="Ketik ayat (misal: Yohanes 3:16), kata, atau kalimat..."
                       className="w-full bg-transparent text-lg sm:text-xl text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-none resize-none leading-relaxed"
                     />
                   </div>
@@ -2951,37 +2980,20 @@ export default function App() {
 
               {/* Quick Phrase Examples */}
               <div className="mt-6 pt-5 border-t border-stone-100 dark:border-stone-800/80 flex flex-wrap items-center gap-2 text-xs sm:text-sm">
-                <span className="text-stone-500 mr-1">Contoh cepat:</span>
-                <button
-                  onClick={() => {
-                    setInputText('1 Musa 1:1');
-                    setTranslateDirection('id-to-smg');
-                    setTextTranslationResult(
-                      translateOfflineInstant('1 Musa 1:1', 'id-to-smg', 'alkitab', allLexicon)
-                    );
-                  }}
-                  className="px-3 py-1.5 rounded-lg bg-[#9A3412]/10 dark:bg-amber-950/60 text-[#9A3412] dark:text-amber-300 font-semibold hover:bg-[#9A3412]/20 transition-colors cursor-pointer"
-                >
-                  1 Musa 1:1 (Verbatim PDF)
-                </button>
-                {NATURAL_PHRASEBOOK.map((item, idx) => (
+                <span className="text-stone-500 mr-1">Ayat peneguh iman:</span>
+                {FAITH_VERSES.map(({ ref, label }) => (
                   <button
-                    key={idx}
+                    key={ref}
                     onClick={() => {
-                      setInputText(item.indonesian);
+                      setInputText(ref);
                       setTranslateDirection('id-to-smg');
-                      setTextTranslationResult(
-                        translateOfflineInstant(
-                          item.indonesian,
-                          'id-to-smg',
-                          speechStyle,
-                          allLexicon
-                        )
-                      );
+                      setSpeechStyle('alkitab');
+                      setTextTranslationResult(translateOfflineInstant(ref, 'id-to-smg', 'alkitab', allLexicon));
                     }}
-                    className="px-3 py-1.5 rounded-lg bg-stone-100 dark:bg-stone-800 hover:bg-[#F3EFE6] dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 transition-colors cursor-pointer"
+                    title={label}
+                    className="px-3 py-1.5 rounded-lg bg-[#9A3412]/10 dark:bg-amber-950/60 text-[#9A3412] dark:text-amber-300 font-semibold hover:bg-[#9A3412]/20 transition-colors cursor-pointer"
                   >
-                    {item.indonesian}
+                    {ref}
                   </button>
                 ))}
               </div>
@@ -4673,16 +4685,29 @@ export default function App() {
         )}
 
         {/* =====================================================================
-            MODE 5: DODING HALELUYA <-> KJ <-> INGGRIS & VIDEO KOMEDI/PERCAKAPAN
+            MODE 5: BUKU NYANYIAN (DH, KJ, PKJ, NKB)
            ===================================================================== */}
         {activeMode === 'doding-video' && (
-          <div className="space-y-8 sm:space-y-10">
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-2xl sm:text-3xl font-serif font-bold text-stone-900 dark:text-stone-100">Buku Nyanyian</h2>
+              <p className="text-sm text-stone-600 dark:text-stone-400 mt-1">
+                Doding Haleluya, Kidung Jemaat, Pelengkap KJ, dan Nyanyikanlah Kidung Baru.
+              </p>
+            </div>
             <SongbookReader />
+          </div>
+        )}
 
+        {/* =====================================================================
+            MODE 6: VIDEO & REFERENSI
+           ===================================================================== */}
+        {activeMode === 'video' && (
+          <div className="space-y-8 sm:space-y-10">
             {/* Section B: Video Grid */}
             <section className="space-y-4">
-              <h2 className="text-xl font-serif font-bold">
-                Video Komedi Simalungun, Percakapan Santai & Doding Haleluya
+              <h2 className="text-2xl sm:text-3xl font-serif font-bold text-stone-900 dark:text-stone-100">
+                Video Bahasa Simalungun
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {VIDEO_REFERENCES.map((vid) => {

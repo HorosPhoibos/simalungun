@@ -1,4 +1,4 @@
-# Pustaha Simalungun
+# Simalungunku
 
 Kamus Bahasa Simalungun–Indonesia berbasis korpus sejajar Alkitab Simalungun & Terjemahan Baru, variasi dialek wilayah, penerjemah suara dengan TTS, serta penerjemah kamera/foto.
 

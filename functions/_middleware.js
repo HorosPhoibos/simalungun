@@ -1,16 +1,19 @@
-// Cloudflare Pages middleware: the whole site (including the Doding Haleluya lyrics)
-// is only served after the visitor enters the site password.
+// Cloudflare Pages middleware: the whole site (including the copyrighted hymn lyrics in
+// data/songbooks.json) is only served after the visitor enters the password once.
 //
 // Secret (set in Cloudflare, never in this repo):
 //   SITE_PASSWORD  e.g. `npx wrangler pages secret put SITE_PASSWORD --project-name pustaha-simalungun`
 //
-// After login the browser gets an HttpOnly cookie signed with the password, valid for 30 days.
+// After login the browser gets an HttpOnly cookie signed with the password, valid for a year.
 // Changing SITE_PASSWORD logs everyone out.
 
 const COOKIE = 'pustaha_auth';
 const LOGIN_PATH = '/__login';
 const LOGOUT_PATH = '/__logout';
-const SESSION_DAYS = 30;
+const SESSION_DAYS = 365;
+
+// Only same-site paths are allowed as the post-login destination.
+const safeNext = (value) => (typeof value === 'string' && /^\/(?!\/)/.test(value) ? value : '/');
 
 const encoder = new TextEncoder();
 
@@ -56,14 +59,14 @@ async function hasValidSession(request, secret) {
   return safeEqual(sig, await sign(expires, secret));
 }
 
-function loginPage(error = '', status = 401) {
+function loginPage(error = '', status = 401, next = '/') {
   const html = `<!doctype html>
 <html lang="id">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="robots" content="noindex" />
-<title>Pustaha Simalungun — Masuk</title>
+<title>Simalungunku — Masuk</title>
 <style>
   :root { --bg:#FAF8F5; --card:#fff; --text:#1c1917; --muted:#57534e; --line:#e7e5e4; --accent:#9A3412; }
   @media (prefers-color-scheme: dark) { :root { --bg:#0f0e0d; --card:#181615; --text:#f5f5f4; --muted:#a8a29e; --line:#292524; } }
@@ -84,8 +87,9 @@ function loginPage(error = '', status = 401) {
 </head>
 <body>
 <form method="POST" action="${LOGIN_PATH}">
-  <h1>Pustaha Simalungun</h1>
-  <p>Kamus, korpus Alkitab, dan Doding Haleluya. Masukkan kata sandi untuk melanjutkan.</p>
+  <input type="hidden" name="next" value="${next.replace(/"/g, '&quot;')}" />
+  <h1>Simalungunku</h1>
+  <p>Kamus, Alkitab paralel, dan buku nyanyian. Masukkan kata sandi sekali saja; perangkat ini akan diingat selama setahun.</p>
   <label for="password">Kata sandi</label>
   <input id="password" name="password" type="password" autocomplete="current-password" autofocus required />
   <button type="submit">Masuk</button>
@@ -111,18 +115,23 @@ export async function onRequest(context) {
   if (url.pathname === LOGIN_PATH && request.method === 'POST') {
     const form = await request.formData();
     const given = String(form.get('password') || '');
+    const next = safeNext(String(form.get('next') || '/'));
     if (!(await safeEqual(given, password))) {
-      return loginPage('Kata sandi salah.');
+      return loginPage('Kata sandi salah.', 401, next);
     }
     const expires = String(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
     const token = `${expires}.${await sign(expires, password)}`;
     return new Response(null, {
       status: 303,
       headers: {
-        Location: '/',
+        Location: next,
         'Set-Cookie': `${COOKIE}=${token}; Path=/; Max-Age=${SESSION_DAYS * 86400}; HttpOnly; Secure; SameSite=Lax`,
       },
     });
+  }
+
+  if (url.pathname === LOGIN_PATH) {
+    return loginPage('', 200, safeNext(url.searchParams.get('next')));
   }
 
   if (url.pathname === LOGOUT_PATH) {
@@ -133,11 +142,18 @@ export async function onRequest(context) {
   }
 
   if (!(await hasValidSession(request, password))) {
-    return loginPage();
+    // Data files get a plain 401 (the app shows a login button); pages get the login form.
+    if (url.pathname.startsWith('/data/')) {
+      return new Response(JSON.stringify({ error: 'login required' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+      });
+    }
+    return loginPage('', 401, safeNext(url.pathname + url.search));
   }
 
   const response = await next();
-  // Protected content may be cached by the visitor's browser, never by shared caches.
+  // Protected content may be cached by the visitor's browser (offline use), never by shared caches.
   const headers = new Headers(response.headers);
   // HTML is revalidated on every visit so new deploys show up immediately.
   const isHtml = (headers.get('Content-Type') || '').includes('text/html');

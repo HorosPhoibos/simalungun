@@ -33,10 +33,14 @@ export interface Songbooks {
 
 let loading: Promise<Songbooks> | null = null;
 
+/** Thrown when the lyrics exist but need the password (Cloudflare site, not logged in). */
+export class LoginRequiredError extends Error {}
+
 export function loadSongbooks(): Promise<Songbooks> {
   if (!loading) {
     loading = fetch('data/songbooks.json')
       .then((r) => {
+        if (r.status === 401) throw new LoginRequiredError('login required');
         if (!r.ok || !(r.headers.get('content-type') || '').includes('json')) throw new Error('not available');
         return r.json();
       })
