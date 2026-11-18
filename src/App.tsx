@@ -58,9 +58,12 @@ import {
   loadBibleCorpus,
   lookupIndonesianWord,
   lookupSimalungunWord,
+  matchLinesToVerses,
   searchVerses,
   verseReference,
+  type VerseMatch,
 } from './bibleCorpus';
+import { recognizeLines } from './ocr';
 import BibleCorpusExplorer from './components/BibleCorpusExplorer';
 import SongbookReader from './components/SongbookReader';
 
@@ -1129,6 +1132,7 @@ export default function App() {
   const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
   const [visionResult, setVisionResult] = useState<VisionTranslationResponse | null>(null);
   const [activeRegionId, setActiveRegionId] = useState<string | null>(null);
+  const [ocrStatus, setOcrStatus] = useState('');
   const [selectedSampleDoc, setSelectedSampleDoc] = useState<SampleCameraDocument>(
     SAMPLE_CAMERA_DOCUMENTS[0]
   );
@@ -2416,7 +2420,7 @@ export default function App() {
     const base64 = dataUrl.split(',')[1];
     stopCameraStream();
     setCapturedImageBase64(dataUrl);
-    await analyzeImageWithGemini(base64, 'image/jpeg');
+    await analyzeImageLocally(dataUrl);
   };
 
   const handleImageFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2429,30 +2433,106 @@ export default function App() {
       const dataUrl = reader.result as string;
       const base64 = dataUrl.split(',')[1];
       setCapturedImageBase64(dataUrl);
-      await analyzeImageWithGemini(base64, file.type || 'image/jpeg');
+      await analyzeImageLocally(dataUrl);
     };
     reader.readAsDataURL(file);
   };
 
-  const analyzeImageWithGemini = async (imageBase64: string, mimeType: string) => {
+  // Reads the photo in the browser (Tesseract.js OCR), recognises Bible verses through the
+  // parallel corpus, and translates any other text word by word. No server needed.
+  const analyzeImageLocally = async (imageDataUrl: string) => {
     setIsAnalyzingImage(true);
     setCameraError(null);
+    setVisionResult(null); // never leave the previous sample's boxes on a new photo
+    setActiveRegionId(null);
+    setOcrStatus('Menyiapkan pembaca teks...');
     try {
-      const response = await fetch('/api/vision-translate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64, mimeType }),
+      const [lines, corpus] = await Promise.all([
+        recognizeLines(imageDataUrl, (percent, label) => setOcrStatus(`${label}... ${percent}%`)),
+        loadBibleCorpus().catch(() => null),
+      ]);
+      if (lines.length === 0) {
+        throw new Error('Tidak ada teks yang terbaca. Pastikan foto tajam, cukup terang, dan tidak miring.');
+      }
+
+      // Consecutive lines from the same verse (or, for other text, the same paragraph) form one region.
+      type Group = { key: string; lines: typeof lines; match: VerseMatch | null };
+      const groups: Group[] = [];
+      const matches = corpus ? matchLinesToVerses(corpus, lines.map((l) => l.text)) : lines.map(() => null);
+      for (const [i, line] of lines.entries()) {
+        const match = matches[i];
+        const key = match ? `v${match.index}` : `p${line.paragraph}`;
+        const last = groups[groups.length - 1];
+        if (last && last.key === key) last.lines.push(line);
+        else groups.push({ key, lines: [line], match });
+      }
+
+      const regions: VisionDetectedRegion[] = groups.map((g, i) => {
+        const sourceText = g.lines.map((l) => l.text).join(' ');
+        const box: [number, number, number, number] = [
+          Math.min(...g.lines.map((l) => l.box[0])),
+          Math.min(...g.lines.map((l) => l.box[1])),
+          Math.max(...g.lines.map((l) => l.box[2])),
+          Math.max(...g.lines.map((l) => l.box[3])),
+        ];
+        if (g.match && corpus) {
+          const fromSmg = g.match.lang === 'smg';
+          return {
+            id: `ocr-${i}`,
+            box_2d: box,
+            sourceText,
+            translatedText: fromSmg ? g.match.verse[4] : g.match.verse[3],
+            detectedLanguage: `${fromSmg ? 'Simalungun' : 'Indonesia'} · ${verseReference(corpus, g.match.verse)}`,
+          };
+        }
+        const t = translateOfflineInstant(sourceText, 'auto', 'alkitab', allLexicon);
+        return {
+          id: `ocr-${i}`,
+          box_2d: box,
+          sourceText,
+          translatedText: t.translatedText,
+          detectedLanguage: `${t.detectedSourceLanguage.replace(/\s*\(.*\)/, '')} · terjemahan kata per kata`,
+        };
       });
-      const data: VisionTranslationResponse = await readApiJson(response);
-      if (!response.ok) {
-        throw new Error((data as any).error || 'Gagal memindai teks di foto.');
+
+      // Key words of the Simalungun text with their meaning from the Bible corpus.
+      const vocabulary: VisionTranslationResponse['vocabularyBreakdown'] = [];
+      if (corpus) {
+        const seen = new Set<string>();
+        for (const r of regions) {
+          if (!/^Simalungun/.test(r.detectedLanguage)) continue;
+          for (const raw of r.sourceText.split(/\s+/)) {
+            const hit = lookupSimalungunWord(corpus, raw);
+            if (!hit || hit.confidence === 'rendah' || seen.has(hit.matchedWord) || hit.matchedWord.length < 3) continue;
+            seen.add(hit.matchedWord);
+            vocabulary.push({
+              word: hit.matchedWord,
+              meaning: hit.candidates.slice(0, 2).map((c) => c.indonesian).join(' / '),
+              partOfSpeech: 'korpus',
+              dialectNote: `Muncul di ${hit.frequency}× ayat · keyakinan ${hit.confidence}`,
+            });
+          }
+          if (vocabulary.length >= 12) break;
+        }
       }
-      setVisionResult(data);
-      if (data.detectedRegions.length > 0) {
-        setActiveRegionId(data.detectedRegions[0].id);
-      }
+
+      const refs = regions.filter((r) => r.detectedLanguage.includes('·') && !r.detectedLanguage.includes('kata per kata'));
+      setVisionResult({
+        summaryTitle: refs.length
+          ? `Ayat terdeteksi: ${[...new Set(refs.map((r) => r.detectedLanguage.split('· ')[1]))].join(', ')}`
+          : 'Teks dari foto',
+        fullSourceText: regions.map((r) => r.sourceText).join('\n'),
+        fullTranslatedText: regions.map((r) => r.translatedText).join('\n'),
+        detectedRegions: regions,
+        vocabularyBreakdown: vocabulary.slice(0, 12),
+      });
+      setActiveRegionId(regions[0].id);
     } catch (err: any) {
-      setCameraError(err.message || 'Gagal menganalisis foto.');
+      setCameraError(
+        err?.message?.startsWith('Tidak ada teks')
+          ? err.message
+          : 'Gagal membaca foto. Pastikan internet aktif saat pertama kali memakai fitur ini (untuk mengunduh pembaca teks).'
+      );
     } finally {
       setIsAnalyzingImage(false);
     }
@@ -4575,18 +4655,46 @@ export default function App() {
                 ) : (
                   <div className="relative w-full rounded-xl overflow-hidden border border-stone-200 dark:border-stone-800 bg-[#F6F1E5] dark:bg-stone-950 min-h-[380px]">
                     {isAnalyzingImage && (
-                      <div className="absolute inset-0 z-20 bg-black/50 flex items-center justify-center text-white text-xs gap-2">
-                        <RefreshCw className="w-5 h-5 animate-spin" />
-                        Memindai teks di foto...
+                      <div className="absolute inset-0 z-20 bg-black/55 flex flex-col items-center justify-center text-white text-sm gap-2 p-4 text-center">
+                        <RefreshCw className="w-6 h-6 animate-spin" />
+                        <span>{ocrStatus || 'Membaca teks di foto...'}</span>
+                        <span className="text-[11px] opacity-75">Pertama kali butuh internet untuk mengunduh pembaca teks.</span>
                       </div>
                     )}
                     {capturedImageBase64 ? (
-                      <img
-                        src={capturedImageBase64}
-                        alt="Dokumen yang dipindai"
-                        referrerPolicy="no-referrer"
-                        className="w-full h-auto block max-h-[500px] object-contain mx-auto"
-                      />
+                      // The boxes are positioned relative to this wrapper, which is exactly the photo's size.
+                      <div className="relative w-fit max-w-full mx-auto">
+                        <img
+                          src={capturedImageBase64}
+                          alt="Dokumen yang dipindai"
+                          referrerPolicy="no-referrer"
+                          className="block max-w-full max-h-[560px] w-auto h-auto"
+                        />
+                        {visionResult?.detectedRegions.map((region, idx) => {
+                          const [ymin, xmin, ymax, xmax] = region.box_2d;
+                          const isActive = activeRegion?.id === region.id;
+                          return (
+                            <button
+                              key={region.id}
+                              onClick={() => setActiveRegionId(region.id)}
+                              style={{
+                                top: `${ymin / 10}%`,
+                                left: `${xmin / 10}%`,
+                                width: `${(xmax - xmin) / 10}%`,
+                                height: `${(ymax - ymin) / 10}%`,
+                              }}
+                              className={`absolute rounded-md cursor-pointer transition-all ${
+                                isActive ? 'border-2 border-[#9A3412] bg-[#9A3412]/20 z-10' : 'border border-[#9A3412]/50 bg-amber-200/20 hover:bg-amber-200/40'
+                              }`}
+                              aria-label={`Teks ${idx + 1}`}
+                            >
+                              <span className="absolute -top-2.5 -left-2.5 min-w-5 h-5 px-1 rounded-full bg-[#9A3412] text-white text-[10px] font-bold flex items-center justify-center">
+                                {idx + 1}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     ) : (
                       <div className="p-8 min-h-[380px] flex flex-col justify-between">
                         <div className="text-center border-b border-stone-300 dark:border-stone-800 pb-3">
@@ -4600,7 +4708,7 @@ export default function App() {
                       </div>
                     )}
 
-                    {visionResult?.detectedRegions.map((region, idx) => {
+                    {!capturedImageBase64 && visionResult?.detectedRegions.map((region, idx) => {
                       const [ymin, xmin, ymax, xmax] = region.box_2d;
                       const topPct = Math.max(0, Math.min(95, ymin / 10));
                       const leftPct = Math.max(0, Math.min(95, xmin / 10));
@@ -4652,6 +4760,9 @@ export default function App() {
                         Lafalkan
                       </button>
                     </div>
+                    <span className="inline-block text-[11px] font-semibold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 rounded-md px-2 py-0.5">
+                      {activeRegion.detectedLanguage}
+                    </span>
                     <p className="text-base font-serif font-semibold">{activeRegion.sourceText}</p>
                     <p className="text-sm text-stone-600 dark:text-stone-300">
                       {activeRegion.translatedText}

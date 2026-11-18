@@ -258,6 +258,132 @@ export function glossSimalungunLine(corpus: BibleCorpus, line: string): string {
     .replace(/\s+([,.;:!?])/g, '$1');
 }
 
+// --- Matching free text (e.g. a line read from a photo) to a verse -----------------
+
+interface WordIndex {
+  verses: Map<string, number[]>; // word -> verse indexes
+  idf: (word: string) => number;
+}
+const wordIndexes = new WeakMap<BibleCorpus, { smg: WordIndex; idn: WordIndex }>();
+
+const matchTokens = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[^a-zà-ÿ\s-]/g, ' ')
+    .split(/[\s-]+/)
+    .filter((w) => w.length >= 2);
+
+function buildWordIndex(corpus: BibleCorpus, field: 3 | 4): WordIndex {
+  const verses = new Map<string, number[]>();
+  corpus.verses.forEach((v, i) => {
+    for (const w of new Set(matchTokens(v[field]))) {
+      const list = verses.get(w);
+      if (list) list.push(i);
+      else verses.set(w, [i]);
+    }
+  });
+  const total = corpus.verses.length;
+  return { verses, idf: (w) => Math.log(total / (1 + (verses.get(w)?.length ?? 0))) };
+}
+
+function indexesFor(corpus: BibleCorpus) {
+  let idx = wordIndexes.get(corpus);
+  if (!idx) {
+    idx = { smg: buildWordIndex(corpus, 3), idn: buildWordIndex(corpus, 4) };
+    wordIndexes.set(corpus, idx);
+  }
+  return idx;
+}
+
+export interface VerseMatch {
+  verse: ParallelVerse;
+  index: number;
+  lang: 'smg' | 'idn';
+  /** share of the text's (rarity-weighted) words found in the verse, 0–1 */
+  score: number;
+}
+
+/**
+ * Finds the verse a piece of text comes from, in either language. OCR mistakes are
+ * tolerated because only most of the words need to match. Returns null below `minScore`.
+ */
+export function matchVerse(corpus: BibleCorpus, text: string, minScore = 0.6): VerseMatch | null {
+  const words = [...new Set(matchTokens(text))];
+  if (words.length < 3) return null;
+  const idx = indexesFor(corpus);
+  let best: VerseMatch | null = null;
+  for (const lang of ['smg', 'idn'] as const) {
+    const index = idx[lang];
+    const known = words.filter((w) => index.verses.has(w));
+    if (known.length < 3) continue;
+    // Candidates come from the rarest words, which point to only a few verses.
+    const rare = [...known].sort((a, b) => index.idf(b) - index.idf(a)).slice(0, 3);
+    const candidates = new Set(rare.flatMap((w) => index.verses.get(w) ?? []));
+    const totalWeight = words.reduce((s, w) => s + Math.max(index.idf(w), 0.5), 0);
+    for (const vi of candidates) {
+      const verseWords = new Set(matchTokens(corpus.verses[vi][lang === 'smg' ? 3 : 4]));
+      const hit = words.reduce((s, w) => s + (verseWords.has(w) ? Math.max(index.idf(w), 0.5) : 0), 0);
+      const score = hit / totalWeight;
+      if (!best || score > best.score) best = { verse: corpus.verses[vi], index: vi, lang, score };
+    }
+  }
+  if (!best || best.score < minScore) return null;
+  // Common words ("holong ni Naibata do ...") occur in many verses; a real quote also keeps
+  // the word order, so most of its word pairs must appear in the verse as well.
+  const pairs = (tokens: string[]) => tokens.slice(1).map((w, i) => `${tokens[i]} ${w}`);
+  const textPairs = pairs(matchTokens(text));
+  const versePairs = new Set(pairs(matchTokens(best.verse[best.lang === 'smg' ? 3 : 4])));
+  const ordered = textPairs.filter((p) => versePairs.has(p)).length / Math.max(1, textPairs.length);
+  return ordered >= 0.5 ? best : null;
+}
+
+/**
+ * Share (0–1) of the text's words found in one given verse. Used to keep a line with
+ * its neighbours: a phrase that occurs in several verses belongs to the verse around it.
+ */
+export function scoreTextInVerse(corpus: BibleCorpus, text: string, index: number, lang: 'smg' | 'idn'): number {
+  const words = [...new Set(matchTokens(text))];
+  if (words.length === 0) return 0;
+  const idx = indexesFor(corpus)[lang];
+  const verseWords = new Set(matchTokens(corpus.verses[index][lang === 'smg' ? 3 : 4]));
+  const total = words.reduce((s, w) => s + Math.max(idx.idf(w), 0.5), 0);
+  const hit = words.reduce((s, w) => s + (verseWords.has(w) ? Math.max(idx.idf(w), 0.5) : 0), 0);
+  return hit / total;
+}
+
+/**
+ * Assigns lines of a page to verses using their neighbours as context, so short lines
+ * ("banggal in.") and phrases repeated elsewhere in the Bible stay with the verse they belong to.
+ */
+export function matchLinesToVerses(corpus: BibleCorpus, lines: string[]): (VerseMatch | null)[] {
+  const result = lines.map((t) => matchVerse(corpus, t));
+
+  // The page's chapter is the one most confidently matched lines agree on.
+  const chapterOf = (m: VerseMatch) => `${m.verse[0]}:${m.verse[1]}`;
+  const votes = new Map<string, number>();
+  for (const m of result) if (m && m.score >= 0.75) votes.set(chapterOf(m), (votes.get(chapterOf(m)) ?? 0) + 1);
+  const pageChapter = [...votes].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const onPage = (m: VerseMatch | null) => m !== null && chapterOf(m) === pageChapter;
+
+  // A verse runs over consecutive lines, so a line that also fits its neighbour's verse
+  // (on this page's chapter) belongs to that verse.
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < lines.length; i++) {
+      for (const j of [i - 1, i + 1]) {
+        const neighbour = result[j];
+        if (!neighbour || neighbour.index === result[i]?.index || !onPage(neighbour)) continue;
+        if (onPage(result[i]) && neighbour.score < 0.75) continue;
+        const score = scoreTextInVerse(corpus, lines[i], neighbour.index, neighbour.lang);
+        if (score >= 0.75) {
+          result[i] = { ...neighbour, score };
+          break;
+        }
+      }
+    }
+  }
+  return result;
+}
+
 /** Total number of verses containing the query (for "n ayat ditemukan"). */
 export function countVerses(corpus: BibleCorpus, query: string): number {
   const q = query.trim().toLowerCase();
