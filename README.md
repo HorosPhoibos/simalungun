@@ -35,6 +35,37 @@ npm run build:corpus
 npm run build
 ```
 
+## Versi pribadi berpassword di Cloudflare (dengan Doding Haleluya)
+
+Lirik Doding Haleluya (© GKPS) **tidak pernah masuk ke GitHub**. Liriknya disimpan di `private-data/` (diabaikan Git) dan hanya ikut ke situs Cloudflare Pages, yang seluruh halamannya dikunci kata sandi oleh `functions/_middleware.js`.
+
+Sekali saja:
+
+1. Buat akun gratis di https://dash.cloudflare.com
+2. Ekstrak lirik dari aplikasi BibelDoding: buka `.xapk` (file zip), lalu `com.rilixtech.bibeldoding.apk` di dalamnya (juga zip), dan ambil `assets/databases/song.db`. Setelah itu jalankan:
+   ```
+   python scripts/export-doding.py path/ke/song.db
+   ```
+3. Masuk ke Cloudflare dari terminal (browser akan terbuka):
+   ```
+   npx wrangler login
+   ```
+4. Deploy pertama (pilih *Create a new project* jika ditanya, nama: `pustaha-simalungun`):
+   ```
+   npm run deploy:cf
+   ```
+5. Atur kata sandi situs (ketik kata sandinya saat diminta):
+   ```
+   npx wrangler pages secret put SITE_PASSWORD --project-name pustaha-simalungun
+   ```
+6. Jalankan `npm run deploy:cf` sekali lagi agar kata sandi aktif. Situs ada di `https://pustaha-simalungun.pages.dev`.
+
+Setiap ada perubahan cukup jalankan `npm run deploy:cf`. Untuk tes di komputer: buat file `.dev.vars` berisi `SITE_PASSWORD=...`, lalu `npm run build:cf` dan `npm run preview:cf`.
+
+## Pasang di HP (aplikasi offline)
+
+Buka situsnya di Chrome HP → menu ⋮ → **Tambahkan ke layar utama / Instal aplikasi**. Halaman yang sudah pernah dibuka (termasuk data korpus dan lirik) tersimpan dan bisa dibuka tanpa internet.
+
 ## Jalankan di komputer (lengkap dengan fitur AI)
 
 Butuh Node.js 20.19+ atau 22+.

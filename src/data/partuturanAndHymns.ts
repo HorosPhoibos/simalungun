@@ -393,7 +393,7 @@ export const HYMN_CONCORDANCE_LIST: HymnConcordanceItem[] = [
     biblicalParallel: {
       reference: 'Psalmen 100:4 (Mazmur 100:4)',
       simalungunText: 'Masuki nasiam ma horbangan-Ni marhitei hatarimakasihon, sonai alaman-Ni marhitei puji-pujian. Martarima kasih ma nasiam Bani, puji nasiam ma goran-Ni!',
-      indonesianText: 'Masuklah melalui pintu gerbang-Nya dengan nyanyian syukur, ke dalam pelataran-Nya dengan puji-pujian!',
+      indonesianText: 'Masuklah melalui pintu gerbang-Nya dengan nyanyian syukur, ke dalam pelataran-Nya dengan puji-pujian, bersyukurlah kepada-Nya dan pujilah nama-Nya!',
     },
     stanzaComparison: {
       simalungunStanza:
@@ -420,8 +420,8 @@ export const HYMN_CONCORDANCE_LIST: HymnConcordanceItem[] = [
     originalGermanOrAuthor: 'Joachim Neander, 1680 (Lobe den Herren, den mächtigen König)',
     biblicalParallel: {
       reference: 'Psalmen 103:1–2 (Mazmur 103:1–2)',
-      simalungunText: 'Puji ma Jahowa, ale tonduyhu, anjaha humbani gok ni uhurhu mamuji goran-Ni na pansing in! Puji ma Jahowa, ale tonduyhu, anjaha ulang ma halupahon ganup dear layak-Ni!',
-      indonesianText: 'Pujilah TUHAN, hai jiwaku! Pujilah nama-Nya yang kudus, hai segenap batinku!',
+      simalungunText: 'Humbani si Daud. Puji ma Jahowa, ale tonduyhu, anjaha humbani gok ni uhurhu mamuji goran-Ni na pansing in! Puji ma Jahowa, ale tonduyhu, anjaha ulang ma halupahon ganup dear layak-Ni!',
+      indonesianText: 'Dari Daud. Pujilah TUHAN, hai jiwaku! Pujilah nama-Nya yang kudus, hai segenap batinku! Pujilah TUHAN, hai jiwaku, dan janganlah lupakan segala kebaikan-Nya!',
     },
     stanzaComparison: {
       simalungunStanza:
@@ -504,8 +504,8 @@ export const HYMN_CONCORDANCE_LIST: HymnConcordanceItem[] = [
     originalGermanOrAuthor: 'Martin Luther, 1529 (Ein feste Burg ist unser Gott)',
     biblicalParallel: {
       reference: 'Psalmen 46:1–2 (Mazmur 46:2)',
-      simalungunText: 'Naibata do haporusan ampa hagogohon banta, pangurupi banggal tongon bani panorang hasosakan.',
-      indonesianText: 'Allah itu bagi kita tempat perlindungan dan kekuatan, sebagai penolong dalam kesesakan sangat terbukti.',
+      simalungunText: 'Bani pambobai koor. Humbani ginompar ni si Korah. Inggouni: Alamot. Sada doding. Naibata do haporusan ampa hagogohon banta, pangurupi banggal tongon bani panorang hasosakan. Halani ai seng anjai mabiar hita, age pe mosor tanoh on, anjaha munjom dolog hu tongah-tongah ni laut,',
+      indonesianText: 'Untuk pemimpin biduan. Dari bani Korah. Dengan lagu: Alamot. Nyanyian. Allah itu bagi kita tempat perlindungan dan kekuatan, sebagai penolong dalam kesesakan sangat terbukti. Sebab itu kita tidak akan takut, sekalipun bumi berubah, sekalipun gunung-gunung goncang di dalam laut;',
     },
     stanzaComparison: {
       simalungunStanza:
@@ -589,8 +589,8 @@ export const HYMN_CONCORDANCE_LIST: HymnConcordanceItem[] = [
     originalGermanOrAuthor: 'Doding Haleluya GKPS',
     biblicalParallel: {
       reference: 'Psalmen 23:1–2 (Mazmur 23:1–2)',
-      simalungunText: 'Jahowa do siparmahan ahu, seng anjai hurangan ahu. Ipatudu do ahu bani sampalan na mombur, anjaha itogu-togu do ahu hu bah parsaranan.',
-      indonesianText: 'TUHAN adalah gembalaku, takkan kekurangan aku. Ia membaringkan aku di padang yang berumput hijau, Ia membimbing aku ke air yang tenang.',
+      simalungunText: 'Psalm ni si Daud. Jahowa do siparmahan ahu, seng anjai hurangan ahu. Ipatudu do ahu bani sampalan na mombur, anjaha itogu-togu do ahu hu bah parsaranan.',
+      indonesianText: 'Mazmur Daud. TUHAN adalah gembalaku, takkan kekurangan aku. Ia membaringkan aku di padang yang berumput hijau, Ia membimbing aku ke air yang tenang;',
     },
     stanzaComparison: {
       simalungunStanza:

@@ -61,6 +61,7 @@ import {
   verseReference,
 } from './bibleCorpus';
 import BibleCorpusExplorer from './components/BibleCorpusExplorer';
+import SongbookReader from './components/SongbookReader';
 
 // On static hosts like GitHub Pages there is no /api server, so a request returns an HTML 404 page.
 // Turn that into a readable message instead of a JSON parse error.
@@ -423,7 +424,7 @@ const INSTANT_PARTUTURAN_QA: QuickKinshipAnswer[] = [
 ];
 
 // Instant 0ms Local Offline Translator Engine (100% Verbatim Bibel Simalungun 2007 PDF)
-function translateOfflineInstant(
+export function translateOfflineInstant(
   rawText: string,
   direction: 'auto' | 'id-to-smg' | 'smg-to-id',
   style: 'santai' | 'sopan' | 'alkitab',
@@ -431,6 +432,19 @@ function translateOfflineInstant(
 ): TextTranslationResponse {
   const cleanInput = rawText.trim().toLowerCase();
   const corpus = getLoadedBibleCorpus();
+
+  // Nothing to translate (empty, numbers or punctuation only): return the input unchanged.
+  if (!/[a-z]/i.test(rawText)) {
+    return {
+      detectedSourceLanguage: '-',
+      targetLanguage: '-',
+      translatedText: rawText.trim(),
+      phoneticGuide: '',
+      dialectComparison: { raya: '', silimakuta: '', topiPasir: '', jaheJahe: '', linguisticNote: '' },
+      wordBreakdown: [],
+      relatedBibleParallel: { reference: '', simalungunVerse: '', indonesianVerse: '' },
+    };
+  }
 
   // A Bible reference ("Yohanes 3:16", "1 Musa 1:1-3") returns the verbatim parallel verses.
   const refHits = corpus ? findVerseByReference(corpus, rawText) : null;
@@ -522,15 +536,26 @@ function translateOfflineInstant(
     };
   }
 
-  const matchedPhrase = NATURAL_PHRASEBOOK.find(
-    (p) =>
-      cleanInput === p.indonesian.toLowerCase() ||
-      cleanInput.includes(p.indonesian.toLowerCase()) ||
-      p.simalungunNatural.toLowerCase().includes(cleanInput)
-  );
+  // Ready-made phrases only match the whole input, so extra words are never silently dropped.
+  // Slang and standard Indonesian match the same phrase ("sudah makan belum" = "udah makan belum").
+  const SLANG: Record<string, string> = { udah: 'sudah', gak: 'tidak', nggak: 'tidak', ga: 'tidak', banget: 'sekali', aja: 'saja' };
+  const bare = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^a-z\s]/g, '')
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((w) => SLANG[w] ?? w)
+      .join(' ');
+  const bareInput = bare(rawText);
+  const matchedPhrase = bareInput
+    ? NATURAL_PHRASEBOOK.find(
+        (p) => bareInput === bare(p.indonesian) || bareInput === bare(p.simalungunNatural) || bareInput === bare(p.simalungunPolite)
+      )
+    : undefined;
 
   if (matchedPhrase) {
-    const isInputIndo = cleanInput.includes(matchedPhrase.indonesian.toLowerCase());
+    const isInputIndo = bareInput === bare(matchedPhrase.indonesian);
     const mainOutput = isInputIndo
       ? style === 'sopan'
         ? matchedPhrase.simalungunPolite
@@ -595,6 +620,7 @@ function translateOfflineInstant(
     datang: 'roh',
     kerja: 'marhorja',
     bekerja: 'marhorja',
+    kasih: 'holong',
     sayang: 'holong',
     cinta: 'holong',
     kangen: 'marsihol',
@@ -603,9 +629,9 @@ function translateOfflineInstant(
     ngambek: 'margoni',
     merajuk: 'mardandi',
     cantik: 'jenges',
-    manis: 'jenges',
+    manis: 'matobu',
     bagus: 'dear',
-    baik: 'bujur',
+    baik: 'dear',
     enak: 'taboh',
     capek: 'loja',
     lelah: 'loja',
@@ -613,10 +639,10 @@ function translateOfflineInstant(
     haus: 'horahan',
     kenyang: 'bosur',
     pasar: 'tiga',
-    rumah: 'jabu',
+    rumah: 'rumah',
     air: 'bah',
     nasi: 'indahan',
-    sayur: 'lompah',
+    sayur: 'lowoh',
     uang: 'duit',
     hati: 'uhur',
     sekali: 'tumang',
@@ -624,7 +650,7 @@ function translateOfflineInstant(
     saja: 'mando',
     cuma: 'pitah',
     apa: 'aha',
-    kenapa: 'mahua',
+    kenapa: 'mase',
     bagaimana: 'sonaha',
     dimana: 'i ja',
     kemana: 'huja',
@@ -638,8 +664,10 @@ function translateOfflineInstant(
     kan: 'tene',
     ayo: 'eta',
     mari: 'eta',
-    terima: 'diatei',
-    kasih: 'tupa',
+    terima: 'jalo',
+    jujur: 'bujur',
+    mengapa: 'mase',
+    lauk: 'lompah',
     ayah: 'bapa',
     bapak: 'bapa',
     ibu: 'inang',
@@ -655,34 +683,79 @@ function translateOfflineInstant(
     pakcik: 'bapanggi',
   };
 
+  // Reverse map (Simalungun → Indonesian). The first Indonesian word listed wins, so
+  // standard words ("sudah", "tidak", "ibu") are preferred over slang ("udah", "gak", "mama").
   const smgToIndoMap: Record<string, string> = {};
   Object.entries(indoToSmgMap).forEach(([idn, smg]) => {
-    smgToIndoMap[smg.toLowerCase()] = idn;
+    const key = smg.toLowerCase();
+    if (!(key in smgToIndoMap)) smgToIndoMap[key] = idn;
   });
+  // Simalungun words whose statistical meaning from the Bible is misleading on its own.
+  Object.assign(smgToIndoMap, { atei: 'hati', sai: 'kiranya', au: 'aku', ahu: 'aku', seng: 'tidak' });
+  // Dictionary entries: use only the first sense ("Sayang; Kasih sayang; Cinta" → "sayang").
+  const firstSense = (s: string) =>
+    s
+      .split(/[;/]/)[0]
+      .replace(/\(.*?\)/g, '')
+      .replace(/^\s*\d+\.\s*/, '')
+      .trim()
+      .toLowerCase();
   allLexicon.forEach((entry) => {
-    const cleanSmg = entry.simalungun.toLowerCase().split('/')[0].trim();
-    const cleanIdn = entry.indonesian.toLowerCase().split(';')[0].split('/')[0].trim();
-    smgToIndoMap[cleanSmg] = entry.indonesian;
-    indoToSmgMap[cleanIdn] = entry.simalungun.split('/')[0].trim();
+    const cleanSmg = firstSense(entry.simalungun);
+    const cleanIdn = firstSense(entry.indonesian);
+    if (!cleanSmg || !cleanIdn || cleanSmg.includes(' ') || cleanIdn.includes(' ')) return;
+    if (!(cleanSmg in smgToIndoMap)) smgToIndoMap[cleanSmg] = cleanIdn;
+    if (!(cleanIdn in indoToSmgMap)) indoToSmgMap[cleanIdn] = cleanSmg;
   });
 
-  const tokens = rawText.split(/\s+/);
-  const breakdown: { word: string; meaning: string; partOfSpeech: string; morphologyNote: string }[] = [];
+  // Fixed multi-word expressions are translated as a unit before word-by-word lookup.
+  const PHRASES: [string, string][] = [
+    ['terima kasih', 'diatei tupa'],
+    ['di mana', 'i ja'],
+    ['ke mana', 'huja'],
+  ];
+  let prepared = rawText;
+  for (const [idn, smg] of PHRASES) {
+    for (const phrase of [idn, smg]) {
+      prepared = prepared.replace(new RegExp(`\\b${phrase}\\b`, 'gi'), phrase.replace(/ /g, '_'));
+    }
+    indoToSmgMap[idn.replace(/ /g, '_')] = smg;
+    smgToIndoMap[smg.replace(/ /g, '_')] = idn;
+  }
+  // A phrase already converted above must not be translated again.
+  const convertedPhrases = new Set(PHRASES.flatMap(([i, s]) => [i, s].map((p) => p.replace(/ /g, '_'))));
 
+  const tokens = prepared.split(/\s+/).filter(Boolean);
+  const breakdown: { word: string; meaning: string; partOfSpeech: string; morphologyNote: string }[] = [];
+  const cleanToken = (t: string) => t.replace(/[^a-zA-Z_-]/g, '').replace(/^-+|-+$/g, '').toLowerCase();
+
+  // Auto-detect: count words that are clearly Simalungun (known Simalungun, not also Indonesian).
   let smgCount = 0;
   tokens.forEach((t) => {
-    const w = t.replace(/[^a-zA-Z]/g, '').toLowerCase();
-    if (smgToIndoMap[w]) smgCount++;
-    else if (corpus && corpus.bySmgWord.has(w) && !corpus.byIdnWord.has(w)) smgCount++;
+    const w = cleanToken(t);
+    if (!w) return;
+    const knownSmg = w in smgToIndoMap || Boolean(corpus?.bySmgWord.has(w));
+    const knownIdn = w in indoToSmgMap || Boolean(corpus?.byIdnWord.has(w));
+    if (knownSmg && !knownIdn) smgCount++;
   });
 
   const resolvedDirection =
     direction === 'auto' ? (smgCount > tokens.length / 2 ? 'smg-to-id' : 'id-to-smg') : direction;
 
   const translatedTokens = tokens.map((tok) => {
-    const clean = tok.replace(/[^a-zA-Z-]/g, '').toLowerCase();
-    const punct = tok.replace(/[a-zA-Z-]/g, '');
+    const clean = cleanToken(tok);
     if (!clean) return tok;
+    // Keep punctuation on the side it was on ("(holong," → "(kasih,").
+    const lead = tok.match(/^[^a-zA-Z_-]*/)?.[0] ?? '';
+    const trail = tok.match(/[^a-zA-Z_-]*$/)?.[0] ?? '';
+    // Names and capitalised words stay capitalised ("Naibata" → "Allah").
+    const capital = /^[^a-zA-Z]*[A-Z]/.test(tok);
+    const wrap = (w: string) => lead + (capital && w ? w[0].toUpperCase() + w.slice(1) : w) + trail;
+
+    if (convertedPhrases.has(clean)) {
+      const map = resolvedDirection === 'id-to-smg' ? indoToSmgMap : smgToIndoMap;
+      return wrap(map[clean] ?? clean.replace(/_/g, ' '));
+    }
 
     if (resolvedDirection === 'id-to-smg') {
       const mapped = indoToSmgMap[clean];
@@ -691,9 +764,9 @@ function translateOfflineInstant(
           word: mapped,
           meaning: clean,
           partOfSpeech: 'lema',
-          morphologyNote: 'Kamus Balai Bahasa Simalungun (PDF)',
+          morphologyNote: 'Kamus kilat aplikasi',
         });
-        return mapped + punct;
+        return wrap(mapped);
       }
       // Fall back to the word lexicon learned from the parallel Bible.
       const fromCorpus = corpus ? lookupIndonesianWord(corpus, clean, 1)[0] : undefined;
@@ -704,7 +777,7 @@ function translateOfflineInstant(
           partOfSpeech: 'korpus',
           morphologyNote: `Korpus paralel Alkitab (${fromCorpus.frequency}× muncul)`,
         });
-        return fromCorpus.simalungun + punct;
+        return wrap(fromCorpus.simalungun);
       }
       return tok;
     } else {
@@ -714,13 +787,41 @@ function translateOfflineInstant(
           word: clean,
           meaning: mapped,
           partOfSpeech: 'lema',
-          morphologyNote: 'Kamus Balai Bahasa Simalungun (PDF)',
+          morphologyNote: 'Kamus kilat aplikasi',
         });
-        return mapped + punct;
+        return wrap(mapped);
       }
-      // Emphasis particles have no Indonesian equivalent ("Ulang ma mabiar ho" = "jangan takut").
-      if (['ma', 'do', 'pe'].includes(clean)) return '';
+      // Emphasis particles and the possessive linker "ni" have no Indonesian word
+      // ("Ulang ma mabiar ho" = "jangan takut", "holong ni Naibata" = "kasih Allah").
+      // Punctuation attached to them is kept.
+      if (['ma', 'do', 'pe', 'ni'].includes(clean)) return lead + trail;
+      // Possessive clitics: "atei-Mu" → "hati-Mu", "goran-Ni" → "nama-Nya".
+      const clitic = clean.match(/^(.+)-(mu|ni|ku|hu|ta)$/);
+      if (clitic) {
+        const base = smgToIndoMap[clitic[1]] ?? (corpus ? lookupSimalungunWord(corpus, clitic[1])?.candidates[0]?.indonesian : undefined);
+        if (base) {
+          const original = tok.match(/-([A-Za-z]+)/)?.[1] ?? clitic[2];
+          const suffix = { mu: 'mu', ni: 'nya', ku: 'ku', hu: 'ku', ta: ' kita' }[clitic[2]]!;
+          const shaped = /^[A-Z]/.test(original) && clitic[2] !== 'ta' ? suffix[0].toUpperCase() + suffix.slice(1) : suffix;
+          return wrap(clitic[2] === 'ta' ? base + shaped : `${base}-${shaped}`);
+        }
+      }
       const fromCorpus = corpus ? lookupSimalungunWord(corpus, clean) : null;
+      // Fused possessives: when the whole word only aligns to the pronoun ("tuhanta" → "kita"),
+      // translate the stem and add the pronoun ("Tuhan kita").
+      const PRONOUN_SUFFIX: [string, string][] = [['nami', 'kami'], ['nima', 'kalian'], ['ta', 'kita'], ['mu', 'mu'], ['hu', 'ku'], ['ni', 'nya']];
+      const topWord = fromCorpus?.candidates[0]?.indonesian;
+      if (corpus && (!topWord || fromCorpus?.confidence !== 'tinggi' || PRONOUN_SUFFIX.some(([, p]) => p === topWord))) {
+        for (const [suf, pron] of PRONOUN_SUFFIX) {
+          if (clean.length > suf.length + 2 && clean.endsWith(suf)) {
+            const stem = clean.slice(0, -suf.length);
+            const stemWord = smgToIndoMap[stem] ?? lookupSimalungunWord(corpus, stem)?.candidates[0]?.indonesian;
+            if (stemWord && !PRONOUN_SUFFIX.some(([, p]) => p === stemWord)) {
+              return wrap(['kita', 'kami', 'kalian'].includes(pron) ? `${stemWord} ${pron}` : stemWord + pron);
+            }
+          }
+        }
+      }
       if (fromCorpus && fromCorpus.candidates.length > 0) {
         const best = fromCorpus.candidates[0].indonesian;
         breakdown.push({
@@ -729,20 +830,24 @@ function translateOfflineInstant(
           partOfSpeech: 'korpus',
           morphologyNote: `Korpus paralel Alkitab (${fromCorpus.frequency}×, keyakinan ${fromCorpus.confidence})`,
         });
-        return best + punct;
+        return wrap(best);
       }
       return tok;
     }
   });
 
-  let finalSentence = translatedTokens.filter(Boolean).join(' ');
-  if (
-    resolvedDirection === 'id-to-smg' &&
-    style === 'santai' &&
-    !finalSentence.toLowerCase().includes('da') &&
-    !finalSentence.toLowerCase().includes('tene')
-  ) {
-    finalSentence = `${finalSentence}, da!`;
+  let finalSentence = translatedTokens
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+([,.;:!?])/g, '$1') // punctuation left alone by a dropped particle
+    .replace(/_/g, ' ')
+    .trim();
+  // Keep the capital letter at the start of the sentence.
+  if (/^[A-Z]/.test(rawText.trim()) && finalSentence) {
+    finalSentence = finalSentence[0].toUpperCase() + finalSentence.slice(1);
+  }
+  if (resolvedDirection === 'id-to-smg' && style === 'santai' && finalSentence && !/\b(da|tene)\b/i.test(finalSentence)) {
+    finalSentence = `${finalSentence.replace(/[.!?]+$/, '')}, da!`;
   }
 
   return {
@@ -760,7 +865,7 @@ function translateOfflineInstant(
       topiPasir: finalSentence.replace(/\blang\b/gi, 'seng'),
       jaheJahe: finalSentence,
       linguisticNote:
-        'Diterjemahkan secara instan dari leksikon Kamus Balai Bahasa & Bibel Simalungun 2007. Klik "Perhalus Kalimat Panjang (AI)" untuk menyusun kalimat dengan grounding PDF asli.',
+        'Terjemahan kata per kata dari kamus kilat aplikasi dan korpus paralel Alkitab (Bibel Simalungun 2007 ↔ TB). Variasi dialek di atas hanya perkiraan dengan aturan sederhana dan belum diverifikasi penutur asli.',
     },
     wordBreakdown:
       breakdown.length > 0
@@ -2418,7 +2523,7 @@ export default function App() {
     <div className="min-h-screen bg-[#FAF8F5] dark:bg-[#121110] text-stone-900 dark:text-stone-100">
       {/* Strict 3-Zone Top Bar Contract */}
       <header className="sticky top-0 z-30 bg-[#FBF9F5]/95 dark:bg-[#141210]/95 backdrop-blur-md border-b border-stone-200/80 dark:border-stone-800">
-        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-8">
+        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3 lg:gap-8">
           {/* Zone 1: Single-Line Brand Wordmark */}
           <a
             href="#top"
@@ -2426,7 +2531,7 @@ export default function App() {
               e.preventDefault();
               setActiveMode('text-lexicon');
             }}
-            className="text-xl font-serif font-bold tracking-tight text-stone-900 dark:text-stone-100 whitespace-nowrap shrink-0"
+            className="text-lg sm:text-xl font-serif font-bold tracking-tight text-stone-900 dark:text-stone-100 whitespace-nowrap min-w-0 truncate"
           >
             Pustaha Simalungun
           </a>
@@ -2463,10 +2568,11 @@ export default function App() {
           <div className="flex items-center gap-2.5 shrink-0">
             <button
               onClick={() => setShowPdfDrawer(true)}
-              className="min-h-[40px] px-4 py-2 text-xs sm:text-sm font-semibold text-white bg-[#9A3412] hover:bg-[#7C2D12] rounded-xl transition-colors whitespace-nowrap shrink-0 flex items-center gap-2 cursor-pointer"
+              className="min-h-[40px] px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-white bg-[#9A3412] hover:bg-[#7C2D12] rounded-xl transition-colors whitespace-nowrap shrink-0 flex items-center gap-2 cursor-pointer"
             >
               <BookOpen className="w-4 h-4" />
-              <span>4 PDF Asli</span>
+              <span className="hidden sm:inline">4 PDF Asli</span>
+              <span className="sm:hidden">PDF</span>
             </button>
 
             <button
@@ -4571,398 +4677,7 @@ export default function App() {
            ===================================================================== */}
         {activeMode === 'doding-video' && (
           <div className="space-y-8 sm:space-y-10">
-            {/* Section A: Doding Haleluya <-> KJ <-> English + Lagu Simalungun Auto-Translate (Optimized for HP & Readability) */}
-            <section className="bg-white dark:bg-[#181615] rounded-2xl border border-stone-200/90 dark:border-stone-800 p-4 sm:p-6 lg:p-8 space-y-6 shadow-2xs">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-stone-100 dark:border-stone-800">
-                <div>
-                  <h2 className="text-xl sm:text-2xl font-serif font-bold text-stone-900 dark:text-stone-100">
-                    Lagu Simalungun & Doding Haleluya GKPS ↔ Terjemahan Indonesia
-                  </h2>
-                  <p className="text-xs sm:text-sm text-stone-600 dark:text-stone-400 mt-1 leading-relaxed">
-                    Nyaman dibaca di HP maupun Laptop. Lagu Simalungun yang belum punya padanan resmi Kidung Jemaat (KJ) tetap tampil lengkap dengan <span className="font-semibold text-amber-800 dark:text-amber-300 underline decoration-amber-400">Terjemahan Otomatis dari Sistem</span>.
-                  </p>
-                </div>
-
-                <div className="relative w-full md:w-80">
-                  <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={hymnSearch}
-                    onChange={(e) => setHymnSearch(e.target.value)}
-                    placeholder="Cari judul lagu Simalungun, nomor Doding, atau lirik..."
-                    className="w-full pl-10 pr-4 py-2.5 text-sm bg-[#FAF8F5] dark:bg-stone-900 rounded-xl border border-stone-300/80 dark:border-stone-700 focus:outline-none focus:border-[#9A3412]"
-                  />
-                </div>
-              </div>
-
-              {/* Mobile-Friendly Quick Song Picker Dropdown + Horizontal Pills (Visible on HP so user doesn't have to scroll far) */}
-              <div className="lg:hidden space-y-2.5">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-stone-500">
-                  Pilih Lagu / Doding ({filteredHymns.length} Lagu Tersedia):
-                </label>
-                <select
-                  value={selectedHymn.id}
-                  onChange={(e) => {
-                    const found = filteredHymns.find((h) => h.id === e.target.value);
-                    if (found) setSelectedHymn(found);
-                  }}
-                  className="w-full px-3.5 py-3 text-sm font-serif font-bold bg-[#FAF8F5] dark:bg-stone-900 rounded-xl border-2 border-[#9A3412]/40 text-stone-900 dark:text-stone-100"
-                >
-                  {filteredHymns.map((hymn) => (
-                    <option key={`mob-opt-${hymn.id}`} value={hymn.id}>
-                      {hymn.haleluyaTitle} ({hymn.haleluyaNumber}) {hymn.isSystemAutoTranslated ? '— [Terjemahan Otomatis]' : `— [${hymn.kjNumber}]`}
-                    </option>
-                  ))}
-                </select>
-
-                <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-                  {filteredHymns.map((hymn) => (
-                    <button
-                      key={`mob-pill-${hymn.id}`}
-                      onClick={() => setSelectedHymn(hymn)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 border transition-all cursor-pointer ${
-                        selectedHymn.id === hymn.id
-                          ? 'bg-[#9A3412] text-white border-[#9A3412]'
-                          : 'bg-[#FAF8F5] dark:bg-stone-900 text-stone-700 dark:text-stone-300 border-stone-200 dark:border-stone-800'
-                      }`}
-                    >
-                      {hymn.haleluyaTitle}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                {/* Desktop Left Sidebar Song List (Hidden on small mobile since mobile has the instant selector above, or shown cleanly on lg) */}
-                <div className="hidden lg:block lg:col-span-4 space-y-2.5 max-h-[600px] overflow-y-auto pr-1">
-                  {filteredHymns.map((hymn) => (
-                    <button
-                      key={hymn.id}
-                      onClick={() => setSelectedHymn(hymn)}
-                      className={`w-full text-left p-4 rounded-xl border transition-all cursor-pointer ${
-                        selectedHymn.id === hymn.id
-                          ? 'bg-[#F3EFE6] dark:bg-stone-800 border-[#9A3412] shadow-xs'
-                          : 'bg-[#FAF8F5] dark:bg-stone-900 border-stone-200/80 dark:border-stone-800 hover:border-stone-300'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-mono font-bold text-[#9A3412] dark:text-amber-400">
-                          {hymn.haleluyaNumber}
-                        </span>
-                        {hymn.isSystemAutoTranslated ? (
-                          <span className="px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/80 text-amber-900 dark:text-amber-300 text-[11px] font-semibold border border-amber-300/60">
-                            Terjemahan Otomatis
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-md bg-stone-200/70 dark:bg-stone-800 text-stone-700 dark:text-stone-300 text-[11px] font-mono">
-                            {hymn.kjNumber}
-                          </span>
-                        )}
-                      </div>
-                      <div className="font-serif font-bold text-base text-stone-900 dark:text-stone-100 mt-1">
-                        {hymn.haleluyaTitle}
-                      </div>
-                      <div className="text-xs text-stone-600 dark:text-stone-400 truncate mt-0.5">
-                        {hymn.kjTitle}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-
-                {/* Main Song Lyric Reader Panel (Large, Clear, High-Contrast Typography for HP & Desktop) */}
-                <div className="lg:col-span-8 bg-[#FAF8F5] dark:bg-stone-900/90 rounded-2xl border border-stone-200/90 dark:border-stone-800 p-4 sm:p-6 lg:p-7 space-y-6">
-                  {/* Song Header */}
-                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-stone-200/80 dark:border-stone-800">
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="px-2.5 py-1 rounded-md bg-[#9A3412]/10 dark:bg-amber-950/60 text-[#9A3412] dark:text-amber-300 text-xs font-mono font-bold">
-                          {selectedHymn.haleluyaNumber}
-                        </span>
-                        {selectedHymn.isSystemAutoTranslated ? (
-                          <span className="px-3 py-1 rounded-md bg-amber-100 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 text-xs font-semibold">
-                            Terjemahan Otomatis dari Sistem
-                          </span>
-                        ) : (
-                          <span className="px-2.5 py-1 rounded-md bg-stone-200/80 dark:bg-stone-800 text-stone-700 dark:text-stone-300 text-xs font-semibold">
-                            Padanan Resmi: {selectedHymn.kjNumber}
-                          </span>
-                        )}
-                      </div>
-
-                      <h3 className="text-2xl sm:text-3xl font-serif font-bold text-stone-900 dark:text-stone-100 leading-tight pt-1">
-                        {selectedHymn.haleluyaTitle}
-                      </h3>
-
-                      <p className="text-xs sm:text-sm text-stone-600 dark:text-stone-300">
-                        {selectedHymn.isSystemAutoTranslated
-                          ? 'Judul Arti Indonesia (Otomatis Sistem): '
-                          : 'Judul Kidung Jemaat (KJ): '}
-                        <strong className="text-stone-900 dark:text-stone-100">{selectedHymn.kjTitle}</strong>
-                        {' · '}
-                        <span className="italic">{selectedHymn.englishTitle}</span>
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2 self-start shrink-0">
-                      <button
-                        onClick={() =>
-                          handlePlayPronunciation(selectedHymn.stanzaComparison.simalungunStanza)
-                        }
-                        className="px-4 py-2.5 text-xs sm:text-sm font-semibold text-white bg-[#9A3412] hover:bg-[#7C2D12] rounded-xl flex items-center gap-2 cursor-pointer shadow-xs"
-                      >
-                        <Volume2 className="w-4 h-4" />
-                        Dengarkan Lafal Lirik
-                      </button>
-                      <button
-                        onClick={() =>
-                          handleCopy(
-                            `${selectedHymn.haleluyaTitle}\n\n${selectedHymn.stanzaComparison.simalungunStanza}\n\nTerjemahan:\n${selectedHymn.stanzaComparison.indonesianStanza}`,
-                            `hymn-${selectedHymn.id}`
-                          )
-                        }
-                        className="px-3 py-2.5 text-xs sm:text-sm font-medium bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl flex items-center gap-1.5 cursor-pointer"
-                      >
-                        {copiedId === `hymn-${selectedHymn.id}` ? (
-                          <>
-                            <Check className="w-4 h-4 text-emerald-600" />
-                            <span>Tersalin</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-4 h-4" />
-                            <span>Salin</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Primary Side-by-Side Simalungun & Indonesian Cards (2 Large Columns on Tablet/Desktop, Stacked Clearly on HP) */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Lirik Asli Bahasa Simalungun */}
-                    <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#181615] border-2 border-[#9A3412]/25 dark:border-amber-800/40 shadow-2xs space-y-2.5">
-                      <div className="flex items-center justify-between border-b border-stone-100 dark:border-stone-800 pb-2">
-                        <span className="text-xs sm:text-sm font-bold uppercase tracking-wider text-[#9A3412] dark:text-amber-400">
-                          1. Lirik Asli Simalungun
-                        </span>
-                        <span className="text-[11px] font-mono text-stone-400">
-                          Teks Utama
-                        </span>
-                      </div>
-                      <p className="font-serif text-base sm:text-lg text-stone-900 dark:text-stone-100 leading-loose whitespace-pre-line">
-                        {selectedHymn.stanzaComparison.simalungunStanza}
-                      </p>
-                    </div>
-
-                    {/* Terjemahan Bahasa Indonesia / Kidung Jemaat */}
-                    <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#181615] border border-stone-200/90 dark:border-stone-800 shadow-2xs space-y-2.5">
-                      <div className="flex items-center justify-between gap-2 flex-wrap border-b border-stone-100 dark:border-stone-800 pb-2">
-                        <span className="text-xs sm:text-sm font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-400">
-                          2. {selectedHymn.isSystemAutoTranslated ? 'Arti Bahasa Indonesia' : 'Lirik Kidung Jemaat (KJ)'}
-                        </span>
-                        {selectedHymn.isSystemAutoTranslated && (
-                          <span className="px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950/80 text-amber-900 dark:text-amber-300 text-[10px] font-semibold">
-                            Terjemahan Otomatis dari Sistem
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-base sm:text-lg text-stone-800 dark:text-stone-200 leading-loose whitespace-pre-line">
-                        {selectedHymn.stanzaComparison.indonesianStanza}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Line-by-Line Parallel Stanza Breakdown (Super easy to follow on HP!) */}
-                  <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#181615] border border-stone-200/80 dark:border-stone-800 space-y-3">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                      <span className="text-xs sm:text-sm font-bold text-stone-800 dark:text-stone-200">
-                        Baca Baris demi Baris (Simalungun ↔ Arti Indonesia):
-                      </span>
-                      {selectedHymn.isSystemAutoTranslated && (
-                        <span className="text-[11px] font-semibold text-amber-800 dark:text-amber-300">
-                          *Terjemahan Otomatis dari Sistem
-                        </span>
-                      )}
-                    </div>
-                    <div className="divide-y divide-stone-100 dark:divide-stone-800">
-                      {selectedHymn.stanzaComparison.simalungunStanza
-                        .split('\n')
-                        .map((smgLine, idx) => {
-                          const idnLines = selectedHymn.stanzaComparison.indonesianStanza.split('\n');
-                          const idnLine = idnLines[idx] || '';
-                          return (
-                            <div key={idx} className="py-2.5 space-y-1">
-                              <div className="font-serif font-bold text-sm sm:text-base text-stone-900 dark:text-stone-100">
-                                {smgLine}
-                              </div>
-                              {idnLine && (
-                                <div className="text-xs sm:text-sm text-emerald-800 dark:text-emerald-300">
-                                  → {idnLine}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                    </div>
-                  </div>
-
-                  {/* English & Verbatim Bible Parallel Footer */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs sm:text-sm">
-                    <div className="p-4 rounded-xl bg-white dark:bg-[#181615] border border-stone-200/80 dark:border-stone-800 space-y-1.5">
-                      <div className="font-semibold text-[#1E3A8A] dark:text-blue-400">
-                        3. Versi Bahasa Inggris ({selectedHymn.englishTitle})
-                      </div>
-                      <p className="italic text-stone-700 dark:text-stone-300 leading-relaxed whitespace-pre-line">
-                        {selectedHymn.stanzaComparison.englishStanza}
-                      </p>
-                    </div>
-
-                    <div className="p-4 rounded-xl bg-white dark:bg-[#181615] border border-stone-200/80 dark:border-stone-800 space-y-1.5">
-                      <div className="font-mono font-bold text-[#9A3412] dark:text-amber-400">
-                        Ayat Bibel Sejajar ({selectedHymn.biblicalParallel.reference})
-                      </div>
-                      <p className="font-serif font-semibold text-stone-900 dark:text-stone-100 leading-relaxed">
-                        &ldquo;{selectedHymn.biblicalParallel.simalungunText}&rdquo;
-                      </p>
-                      <p className="text-xs text-stone-500 leading-relaxed">
-                        {selectedHymn.biblicalParallel.indonesianText}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Custom Simalungun Song / Lyric Auto-Translator (HP Friendly + 1-Tap Examples) */}
-              <div className="pt-6 border-t border-stone-200 dark:border-stone-800 space-y-4">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-base sm:text-lg font-serif font-bold text-stone-900 dark:text-stone-100">
-                      Terjemahkan Lagu / Lirik Simalungun Lainnya
-                    </h3>
-                    <span className="px-2.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/70 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs font-semibold">
-                      Terjemahan Otomatis dari Sistem
-                    </span>
-                  </div>
-                  <p className="text-xs sm:text-sm text-stone-600 dark:text-stone-400 leading-relaxed">
-                    Ada lagu Simalungun yang belum ada terjemahan resminya? Ketik atau tempel liriknya di bawah ini (atau klik contoh lagu di bawah), lagu akan tetap keluar lengkap dengan <strong>Terjemahan Otomatis dari Sistem</strong>.
-                  </p>
-
-                  {/* 1-Tap Sample Song Pills for Mobile Users */}
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
-                    <span className="text-xs font-semibold text-stone-500">Coba 1-Klik Lagu:</span>
-                    {[
-                      {
-                        title: 'Sitalasari (Lagu Simalungun Populer)',
-                        lyrics:
-                          'Sitalasari bunga ni pargaulan,\nUlang lupa ham bani padanta,\nAge daoh ahu hun lambungmu,\nSai tong do ingot uhurhu bamu.',
-                      },
-                      {
-                        title: 'Tading ma Ham Na Tading',
-                        lyrics:
-                          'Tading ma ham na tading, borhat ma ahu na laho,\nHoras ma ham na tading, sai jumpah ma use,\nTondong pakon sanina, ulang lupa martonggo.',
-                      },
-                      {
-                        title: 'Doding Pujian Simalungun',
-                        lyrics:
-                          'Puji ma Jahowa ale tonduyhu,\nHalani banggal ni holong-Ni banta,\nSai ihutkon ma hata-Ni ganup ari.',
-                      },
-                    ].map((preset, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => {
-                          setCustomSongTitle(preset.title);
-                          setCustomSongLyrics(preset.lyrics);
-                          const instant = translateOfflineInstant(
-                            preset.lyrics,
-                            'smg-to-id',
-                            'alkitab',
-                            allLexicon
-                          );
-                          setCustomSongAutoTranslation(instant.translatedText);
-                        }}
-                        className="px-3 py-1.5 rounded-xl bg-[#FAF8F5] dark:bg-stone-900 hover:bg-[#F3EFE6] border border-stone-300/80 dark:border-stone-700 text-xs font-semibold text-stone-800 dark:text-stone-200 cursor-pointer"
-                      >
-                        {preset.title}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <form onSubmit={handleTranslateCustomSong} className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-                  <div className="lg:col-span-5 space-y-3">
-                    <input
-                      type="text"
-                      value={customSongTitle}
-                      onChange={(e) => setCustomSongTitle(e.target.value)}
-                      placeholder="Judul Lagu Simalungun (mis: Sitalasari / Doding Haleluya...)"
-                      className="w-full px-4 py-2.5 text-sm bg-[#FAF8F5] dark:bg-stone-900 rounded-xl border border-stone-300/80 dark:border-stone-700 font-medium"
-                    />
-                    <textarea
-                      value={customSongLyrics}
-                      onChange={(e) => setCustomSongLyrics(e.target.value)}
-                      rows={4}
-                      placeholder="Ketik atau tempel bait lirik lagu Simalungun di sini..."
-                      className="w-full px-4 py-3 text-sm sm:text-base bg-[#FAF8F5] dark:bg-stone-900 rounded-xl border border-stone-300/80 dark:border-stone-700 font-serif leading-relaxed"
-                    />
-                    <button
-                      type="submit"
-                      disabled={isTranslatingSong || !customSongLyrics.trim()}
-                      className="w-full sm:w-auto px-5 py-3 text-xs sm:text-sm font-semibold text-white bg-[#9A3412] hover:bg-[#7C2D12] rounded-xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                    >
-                      {isTranslatingSong ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                          Menerjemahkan Lirik Lagu...
-                        </>
-                      ) : (
-                        <>
-                          <Music className="w-4 h-4" />
-                          Tampilkan Lagu & Terjemahan Otomatis Sistem
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  <div className="lg:col-span-7">
-                    {customSongAutoTranslation ? (
-                      <div className="p-4 sm:p-6 rounded-2xl bg-[#FAF8F5] dark:bg-stone-900 border border-stone-200 dark:border-stone-800 space-y-4">
-                        <div className="flex items-center justify-between gap-2 flex-wrap pb-3 border-b border-stone-200/80 dark:border-stone-800">
-                          <h4 className="font-serif font-bold text-lg sm:text-xl text-stone-900 dark:text-stone-100">
-                            {customSongTitle.trim() || 'Lagu Simalungun'}
-                          </h4>
-                          <span className="px-3 py-1 rounded-md bg-amber-100 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 text-xs font-semibold">
-                            Terjemahan Otomatis dari Sistem
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div className="p-4 rounded-xl bg-white dark:bg-[#181615] border border-stone-200/80 dark:border-stone-800 space-y-1.5">
-                            <div className="text-xs font-bold uppercase tracking-wider text-[#9A3412] dark:text-amber-400">
-                              Lirik Asli Simalungun
-                            </div>
-                            <p className="font-serif text-base sm:text-lg text-stone-900 dark:text-stone-100 whitespace-pre-line leading-loose">
-                              {customSongLyrics}
-                            </p>
-                          </div>
-                          <div className="p-4 rounded-xl bg-white dark:bg-[#181615] border border-stone-200/80 dark:border-stone-800 space-y-1.5">
-                            <div className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-400">
-                              Arti Indonesia (Otomatis Sistem)
-                            </div>
-                            <p className="text-base sm:text-lg text-stone-800 dark:text-stone-200 whitespace-pre-line leading-loose">
-                              {customSongAutoTranslation}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="p-6 rounded-2xl bg-[#FAF8F5] dark:bg-stone-900 border border-dashed border-stone-300 dark:border-stone-800 text-sm text-stone-500 leading-relaxed">
-                        Ketik lirik lagu Simalungun di sebelah kiri (atau klik salah satu tombol contoh lagu di atas) untuk melihat lirik berdampingan dengan <span className="font-semibold text-amber-800 dark:text-amber-300">Terjemahan Otomatis dari Sistem</span>.
-                      </div>
-                    )}
-                  </div>
-                </form>
-              </div>
-            </section>
+            <SongbookReader />
 
             {/* Section B: Video Grid */}
             <section className="space-y-4">
@@ -4990,9 +4705,12 @@ export default function App() {
                       </div>
                       <div className="p-5 space-y-3">
                         <div className="text-xs text-stone-400">{vid.category}</div>
-                        <h3 className="font-serif font-bold text-base">{vid.title}</h3>
-                        <p className="text-xs text-stone-500">{vid.description}</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
+                        <h3 className="font-serif font-bold text-base text-stone-900 dark:text-stone-100">{vid.title}</h3>
+                        <div className="text-xs text-stone-500">Channel: {vid.channelOrSource}</div>
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-stone-400 pt-2">
+                          Kosakata terkait (catatan aplikasi, bukan transkrip video)
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           {vid.featuredVocabulary.map((fv, i) => (
                             <div
                               key={i}

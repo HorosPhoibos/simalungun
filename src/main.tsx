@@ -43,6 +43,15 @@ class ErrorBoundary extends Component<{children: ReactNode}, {error: Error | nul
   }
 }
 
+// Installable app + offline support (production builds only, so dev reloads stay fresh).
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {
+      // offline support is optional
+    });
+  });
+}
+
 createRoot(document.getElementById('root')!).render(
   <ErrorBoundary>
     <App />

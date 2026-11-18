@@ -62,8 +62,8 @@ export const VIDEO_REFERENCES: VideoReferenceItem[] = [
   {
     id: 'vid-komedi-1',
     youtubeId: 'GXQofRrxfYY',
-    title: 'Komedi Simalungun — Logat & Sahap Santai Sehari-hari (GXQofRrxfYY)',
-    channelOrSource: 'Komedi Simalungun (GXQofRrxfYY)',
+    title: 'Komedi Simalungun - Sapu - Sapu Tolor On - Dijamin Ngakak',
+    channelOrSource: 'RLS CHANNEL',
     category: 'Komedi & Sahap Santai',
     description:
       'Referensi percakapan santai anak muda dan keluarga Simalungun yang kaya dengan partikel lisan alami (da, tene, ma, gelah, mando, dassa, hape) sehingga tidak terdengar kaku.',
@@ -93,8 +93,8 @@ export const VIDEO_REFERENCES: VideoReferenceItem[] = [
   {
     id: 'vid-komedi-2',
     youtubeId: 'BAJjjw3qe7Q',
-    title: 'Komedi Simalungun — Interaksi Huta & Humor Keluarga (BAJjjw3qe7Q)',
-    channelOrSource: 'Komedi Simalungun (BAJjjw3qe7Q)',
+    title: 'Lawak Simalungun Lucu !!  marlajar lupa manorihi rokkap 😊',
+    channelOrSource: 'Putra Septo Official',
     category: 'Komedi & Sahap Santai',
     description:
       'Dialog jenaka khas kehidupan kampung (huta) dan kedai (lopou) dengan kosakata sehari-hari yang lugas.',
@@ -124,8 +124,8 @@ export const VIDEO_REFERENCES: VideoReferenceItem[] = [
   {
     id: 'vid-komedi-3',
     youtubeId: 'u3k7W8HMUbg',
-    title: 'Komedi Simalungun dengan Subtitle — Belajar Kalimat Lisan (u3k7W8HMUbg)',
-    channelOrSource: 'Komedi Simalungun Subtitle (u3k7W8HMUbg)',
+    title: 'FILM PENDEK SIMALUNGUN "ANAK BORU PARDEMBAN"',
+    channelOrSource: 'Barendeng TV',
     category: 'Komedi & Sahap Santai',
     description:
       'Video komedi Simalungun ber-subtitle untuk membandingkan teks terjemahan Bahasa Indonesia dengan pengucapan asli penutur jati.',
@@ -155,8 +155,8 @@ export const VIDEO_REFERENCES: VideoReferenceItem[] = [
   {
     id: 'vid-percakapan-1',
     youtubeId: 'WoY6YMRM-ho',
-    title: 'Percakapan Bahasa Simalungun Sehari-hari — Bagian 1 (WoY6YMRM-ho)',
-    channelOrSource: 'Pembelajaran Percakapan Simalungun (WoY6YMRM-ho)',
+    title: 'Perkenalan Diri Menggunakan Bahasa Simalungun',
+    channelOrSource: 'Insan Pemelajar',
     category: 'Dialek & Percakapan',
     description:
       'Contoh dialog perkenalan, menanyakan marga (martarombo), tempat tinggal (huta), dan sapaan sopan menggunakan "Ham".',
@@ -186,8 +186,8 @@ export const VIDEO_REFERENCES: VideoReferenceItem[] = [
   {
     id: 'vid-percakapan-2',
     youtubeId: '3ugtImal3NY',
-    title: 'Percakapan Bahasa Simalungun Sehari-hari — Bagian 2 (3ugtImal3NY)',
-    channelOrSource: 'Pembelajaran Percakapan Simalungun (3ugtImal3NY)',
+    title: 'DISKUSI KELUARGA DALAM BAHASA SIMALUNGUN',
+    channelOrSource: 'Mr. Leo 88',
     category: 'Dialek & Percakapan',
     description:
       'Latihan percakapan di rumah, pasar (tiga/pokan), dan ladang (juma) dengan intonasi yang tepat.',
@@ -217,8 +217,8 @@ export const VIDEO_REFERENCES: VideoReferenceItem[] = [
   {
     id: 'vid-percakapan-3',
     youtubeId: 'AOaawIfZ8wk',
-    title: 'Percakapan & Ungkapan Kasih Bahasa Simalungun (AOaawIfZ8wk)',
-    channelOrSource: 'Pembelajaran Percakapan Simalungun (AOaawIfZ8wk)',
+    title: 'Bahasa Simalungun [ partuturan dalam ke kerabatan suku Simalungun]',
+    channelOrSource: 'Nurmariaty Sianturi',
     category: 'Dialek & Percakapan',
     description:
       'Ungkapan perasaan, rindu (marsihol), kasih sayang (holong), dan nasihat orang tua (podah) dalam Bahasa Simalungun.',
@@ -243,8 +243,8 @@ export const VIDEO_REFERENCES: VideoReferenceItem[] = [
   {
     id: 'vid-1',
     youtubeId: 'GgE924WxwCU',
-    title: 'Referensi Kosakata, Pelafalan & Ungkapan Bahasa Simalungun (GgE924WxwCU)',
-    channelOrSource: 'Referensi Audio-Visual Simalungun (GgE924WxwCU)',
+    title: 'Ayok, Belajar Bahasa Simalungun...',
+    channelOrSource: 'Info Batak',
     category: 'Dialek & Percakapan',
     description:
       'Referensi pelafalan autentik, intonasi kalimat, serta konfirmasi penggunaan kata sapaan dan kosakata sehari-hari masyarakat Simalungun.',
@@ -265,8 +265,8 @@ export const VIDEO_REFERENCES: VideoReferenceItem[] = [
     id: 'vid-2',
     youtubeId: 'BxYupi9ukwM',
     playlistId: 'PLdVjoWx7DO1E_vUKX8eHVC9u69MIReiMH',
-    title: 'Koleksi Doding Haleluya GKPS & Kidung Rohani Simalungun',
-    channelOrSource: 'Playlist Doding Haleluya GKPS (BxYupi9ukwM)',
+    title: 'KUMPULAN LAGU ROHANI BUKU DODING HALELUYA GKPS | ETNIS SIMALUNGUN 2026',
+    channelOrSource: 'Etnis Simalungun',
     category: 'Doding Haleluya GKPS',
     description:
       'Daftar putar lagu rohani Doding Haleluya Gereja Kristen Protestan Simalungun (GKPS) yang melestarikan kosakata sastra, pujian, dan paralelisme Alkitab Simalungun.',
@@ -566,7 +566,7 @@ export const SIMALUNGUN_LEXICON: DictionaryEntry[] = [
         reference: 'Galatia 5:22',
         bookSimalungun: 'Galatia',
         bookIndonesian: 'Galatia',
-        simalungunVerse: 'Tapi buah ni Tonduy ai ma: Holong ni atei, malas ni uhur, damei, lumbang ni uhur, habasaron, habujuron, haporsayaon.',
+        simalungunVerse: 'Tapi on do buah ni Tonduy: Holong, malas ni uhur, damei, lumbang ni uhur, habasaron, halayakon, haporsayaon, halamlamon, ampa panrajaion diri.',
         indonesianVerse: 'Tetapi buah Roh ialah: kasih, sukacita, damai sejahtera, kesabaran, kemurahan, kebaikan, kesetiaan.',
       },
     ],
@@ -876,8 +876,8 @@ export const SIMALUNGUN_LEXICON: DictionaryEntry[] = [
         reference: 'Mazmur 23:4 (Psalmen 23:4)',
         bookSimalungun: 'Psalmen',
         bookIndonesian: 'Mazmur',
-        simalungunVerse: 'Ai Ham do hasomanku, tungkot-Mu pakon lonsing-Mu do na mangapohi ahu.',
-        indonesianVerse: 'Sebab Engkau besertaku; gada-Mu dan tongkat-Mu, itulah yang menghibur aku.',
+        simalungunVerse: 'Age pe mardalan ahu bani lombang bagas ni hagolapan, seng mabiar ahu, ai Ham do mangkasomani ahu; tungkot-Mu pakon simambu-Mu do na mangapohi ahu.',
+        indonesianVerse: 'Sekalipun aku berjalan dalam lembah kekelaman, aku tidak takut bahaya, sebab Engkau besertaku; gada-Mu dan tongkat-Mu, itulah yang menghibur aku.',
       },
     ],
     verifiedSource: 'Kamus Bahasa Simalungun–Indonesia (2016) hal. 79',
@@ -1108,8 +1108,8 @@ export const SIMALUNGUN_LEXICON: DictionaryEntry[] = [
         reference: 'Mazmur 90:17 (Psalmen 90:17)',
         bookSimalungun: 'Psalmen',
         bookIndonesian: 'Mazmur',
-        simalungunVerse: 'Sai totapkon Ham ma banta horja ni tanganta; enggo, horja ni tanganta, sai totapkon Ham ma in!',
-        indonesianVerse: 'Kiranya Engkau meneguhkan perbuatan tangan kami, ya, perbuatan tangan kami, teguhkanlah itu!',
+        simalungunVerse: 'Sai sogop ma hu banta habasaron ni Tuhan Naibatanta, anjaha ipatotap ma horja ni tanganta, tongon, sai ipatotap ma horja ni tanganta.',
+        indonesianVerse: 'Kiranya kemurahan Tuhan, Allah kami, atas kami, dan teguhkanlah perbuatan tangan kami, ya, perbuatan tangan kami, teguhkanlah itu.',
       },
     ],
     verifiedSource: 'Kamus Bahasa Simalungun–Indonesia (2016) hal. 94',
@@ -1176,7 +1176,7 @@ export const SIMALUNGUN_LEXICON: DictionaryEntry[] = [
         reference: 'Matius 6:33 (Mateus 6:33)',
         bookSimalungun: 'Mateus',
         bookIndonesian: 'Matius',
-        simalungunVerse: 'Tapi pindahi nasiam ma lobei Harajaon ni Naibata pakon habonaron-Ni, dob ai tambahkonon-Ni do ganupan ai bani nasiam.',
+        simalungunVerse: 'Parlobei ma pindahi hanima Harajaon ni Naibata ampa hapintoron-Ni, dob ai tambahkonon-Ni do ganupan ai bannima.',
         indonesianVerse: 'Tetapi carilah dahulu Kerajaan Allah dan kebenarannya, maka semuanya itu akan ditambahkan kepadamu.',
       },
     ],

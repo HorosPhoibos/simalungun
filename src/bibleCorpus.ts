@@ -190,6 +190,74 @@ export function searchVerses(corpus: BibleCorpus, query: string, limit = 20): Pa
     .map((h) => h.v);
 }
 
+// Emphasis particles and the possessive linker "ni" have no Indonesian word of their own.
+const SMG_SKIP = new Set(['ma', 'do', 'pe', 'ni']);
+// Common words whose statistical meaning is misleading on its own.
+const SMG_FIXED: Record<string, string> = {
+  au: 'aku',
+  ahu: 'aku',
+  sai: 'kiranya',
+  atei: 'hati',
+  seng: 'tidak',
+  lang: 'tidak',
+  bangku: 'kepadaku',
+  in: 'itu',
+  bai: 'kepada',
+  bamu: 'kepada-Mu',
+  banta: 'kepada kita',
+};
+const CLITICS: Record<string, string> = { mu: 'mu', ni: 'nya', ku: 'ku', hu: 'ku' };
+const PRONOUN_SUFFIXES: [string, string][] = [
+  ['nami', ' kami'],
+  ['nima', ' kalian'],
+  ['ta', ' kita'],
+  ['mu', 'mu'],
+  ['hu', 'ku'],
+  ['ku', 'ku'],
+];
+
+function glossWord(corpus: BibleCorpus, word: string): string | null {
+  if (SMG_FIXED[word]) return SMG_FIXED[word];
+  const hit = lookupSimalungunWord(corpus, word);
+  const top = hit?.candidates[0]?.indonesian;
+  if (hit && top && hit.confidence !== 'rendah') return top;
+  // Fused possessive: "tuhanta" → "tuhan kita", "uhurhu" → "hatiku".
+  for (const [suf, idn] of PRONOUN_SUFFIXES) {
+    if (word.length > suf.length + 2 && word.endsWith(suf)) {
+      const stem = glossWord(corpus, word.slice(0, -suf.length));
+      if (stem) return stem + idn;
+    }
+  }
+  return top ? `${top}?` : null; // a weak guess is marked with "?"
+}
+
+/**
+ * Word-by-word Indonesian gloss of a Simalungun line using the corpus lexicon.
+ * Weak guesses end with "?", unknown words stay in [brackets], so the reader can see the gaps.
+ */
+export function glossSimalungunLine(corpus: BibleCorpus, line: string): string {
+  return line
+    .split(/\s+/)
+    .map((token) => {
+      const word = normalizeWord(token);
+      const punct = token.match(/[,.;:!?]+$/)?.[0] ?? '';
+      if (!word) return token;
+      if (SMG_SKIP.has(word)) return punct;
+      // "goran-Mu" → "nama-Mu", "atei-Ni" → "hati-Nya"
+      const clitic = word.match(/^(.+)-(mu|ni|ku|hu)$/);
+      if (clitic) {
+        const stem = glossWord(corpus, clitic[1]);
+        const capital = /-[A-Z]/.test(token);
+        const suffix = CLITICS[clitic[2]];
+        if (stem) return `${stem.replace(/\?$/, '')}-${capital ? suffix[0].toUpperCase() + suffix.slice(1) : suffix}${punct}`;
+      }
+      return (glossWord(corpus, word) ?? `[${word}]`) + punct;
+    })
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+([,.;:!?])/g, '$1');
+}
+
 /** Total number of verses containing the query (for "n ayat ditemukan"). */
 export function countVerses(corpus: BibleCorpus, query: string): number {
   const q = query.trim().toLowerCase();

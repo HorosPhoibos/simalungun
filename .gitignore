@@ -6,3 +6,11 @@ coverage/
 .env*
 !.env.example
 scripts/.cache/
+
+
+# Doding Haleluya lyrics are copyrighted (GKPS): never commit them.
+# They are only deployed to the password-protected Cloudflare Pages site.
+private-data/
+dist-cf/
+.wrangler/
+.dev.vars
