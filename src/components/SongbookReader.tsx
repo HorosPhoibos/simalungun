@@ -25,8 +25,6 @@ import {
 } from 'lucide-react';
 import { BibleCorpus, WordLookup, glossSimalungunLine, loadBibleCorpus, lookupSimalungunWord } from '../bibleCorpus';
 import { Metronome, beatsPerBar, keyName, parseKey, writtenKeyFor } from '../music';
-import { getYoutubeLink, songKey } from '../songMedia';
-import SongMedia from './SongMedia';
 import {
   Book,
   MOODS,
@@ -129,7 +127,6 @@ export default function SongbookReader() {
   const [fontSize, setFontSize] = useState(() => readPref('pustaha_song_font', 1));
   const [showGloss, setShowGloss] = useState(false);
   const [showTools, setShowTools] = useState(false);
-  const [showMedia, setShowMedia] = useState(false);
   const [mobileSide, setMobileSide] = useState<'main' | 'pair'>('main');
   const [corpus, setCorpus] = useState<BibleCorpus | null>(null);
   const [wordInfo, setWordInfo] = useState<{ word: string; hit: WordLookup | null } | null>(null);
@@ -193,8 +190,6 @@ export default function SongbookReader() {
     setTranspose(0);
     setWordInfo(null);
     setMobileSide('main');
-    // Open the recordings panel straight away when this song already has a saved video.
-    setShowMedia(Boolean(songBook && song && getYoutubeLink(songKey(songBook.id, song.number))));
   }, [songBook?.id, song?.number]);
 
   useEffect(() => () => metronome.current?.stop(), []);
@@ -630,9 +625,9 @@ export default function SongbookReader() {
               >
                 <Maximize2 className="w-4 h-4" /> Tampilkan
               </button>
-              <button onClick={() => setShowMedia(!showMedia)} className={`${iconBtn} ${showMedia ? 'ring-1 ring-[#9A3412]/50' : ''}`} title="Rekaman lagu">
-                <Youtube className="w-4 h-4" /> Rekaman
-              </button>
+              <a href={youtubeUrl(songBook, song)} target="_blank" rel="noreferrer" className={iconBtn} title="Cari lagu ini di YouTube">
+                <Youtube className="w-4 h-4 text-red-600" /> Cari di YouTube
+              </a>
               <label className={`${iconBtn} relative`} title="Tambah ke daftar putar">
                 <ListPlus className="w-4 h-4" /> <span className="hidden sm:inline">Daftar putar</span>
                 <select
@@ -719,8 +714,6 @@ export default function SongbookReader() {
           )}
 
           <div className="p-5 sm:p-7 space-y-5">
-            {showMedia && <SongMedia book={songBook.id} number={song.number} searchUrl={youtubeUrl(songBook, song)} />}
-
             {/* Language switch for paired songs on phones; side by side from xl */}
             {pair && (
               <div className="xl:hidden grid grid-cols-2 gap-1 p-1 rounded-xl bg-stone-100 dark:bg-stone-900">

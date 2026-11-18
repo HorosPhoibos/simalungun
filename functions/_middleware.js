@@ -61,11 +61,12 @@ async function hasValidSession(request, secret) {
 
 function loginPage(error = '', status = 401, next = '/') {
   const html = `<!doctype html>
-<html lang="id">
+<html lang="id" translate="no">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="robots" content="noindex" />
+<meta name="google" content="notranslate" />
 <title>Simalungunku — Masuk</title>
 <style>
   :root { --bg:#FAF8F5; --card:#fff; --text:#1c1917; --muted:#57534e; --line:#e7e5e4; --accent:#9A3412; }
